@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("com.chaquo.python")
+    id("com.google.protobuf")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -52,6 +53,21 @@ chaquopy {
     }
 }
 
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:4.32.1"
+    }
+    generateProtoTasks {
+        all().configureEach {
+            builtins {
+                create("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.08.00")
 
@@ -62,9 +78,17 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.datastore:datastore:1.2.1")
+    implementation("com.google.crypto.tink:tink-android:1.23.0")
+    implementation("com.google.protobuf:protobuf-javalite:4.32.1")
+    implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver3:5.3.0")
+    testImplementation("org.json:json:20250517")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test:runner:1.7.0")
 }

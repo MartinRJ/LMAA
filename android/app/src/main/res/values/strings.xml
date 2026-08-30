@@ -3,6 +3,16 @@
     <string name="app_name">LMAA</string>
     <string name="app_title">Local Media Analysis Assistant</string>
     <string name="intro">YouTube-Briefings für Menschen, die informiert statt hingehalten werden möchten.</string>
+    <string name="openai_key_title">OpenAI API-Key</string>
+    <string name="openai_key_explanation">Persönliches BYOK für direkte Briefing-Anfragen. Der gespeicherte Key wird nur noch als **** angezeigt.</string>
+    <string name="openai_key_label">OpenAI API-Key eingeben</string>
+    <string name="openai_key_save">Sicher speichern</string>
+    <string name="openai_key_replace">Ersetzen</string>
+    <string name="openai_key_replace_save">Ersetzung speichern</string>
+    <string name="openai_key_delete">Löschen</string>
+    <string name="openai_key_operation_error">Der OpenAI-Key konnte nicht geändert werden.</string>
+    <string name="secret_store_error">Der verschlüsselte Secret-Store ist nicht verfügbar.</string>
+    <string name="cancel">Abbrechen</string>
     <string name="url_label">YouTube-Link</string>
     <string name="url_placeholder">https://youtu.be/…</string>
     <string name="validate_link">Link prüfen</string>
@@ -18,6 +28,10 @@
     <string name="transcript_segments">Segmente: %1$d</string>
     <string name="transcript_characters">Zeichen: %1$d</string>
     <string name="transcript_error">Lokaler Abruf fehlgeschlagen: %1$s</string>
+    <string name="generate_briefing">Briefing mit gpt-5.6-sol erstellen</string>
+    <string name="briefing_loading">oEmbed-Metadaten und Briefing werden direkt vom Tablet abgerufen…</string>
+    <string name="briefing_ready">Briefing erstellt · Modell: %1$s</string>
+    <string name="briefing_error">Briefing fehlgeschlagen: %1$s</string>
     <string name="history_title">Bisherige Briefings</string>
     <string name="history_empty">Noch keine Briefings. Der erste vollständige Analysepfad folgt als Nächstes.</string>
     <string name="url_error_empty">Bitte einen YouTube-Link eingeben.</string>

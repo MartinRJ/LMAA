@@ -25,17 +25,23 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import de.lmaa.app.secrets.ProviderSecretStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +49,25 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MaterialTheme {
-                LmaaHomeScreen(LocalTranscriptProvider(applicationContext))
+                val context = LocalContext.current.applicationContext
+                var secretStoreState by remember {
+                    mutableStateOf<SecretStoreUiState>(SecretStoreUiState.Loading)
+                }
+                LaunchedEffect(context) {
+                    secretStoreState = try {
+                        SecretStoreUiState.Ready(
+                            withContext(Dispatchers.IO) {
+                                ProviderSecretStore.getInstance(context)
+                            },
+                        )
+                    } catch (_: Exception) {
+                        SecretStoreUiState.Error
+                    }
+                }
+                LmaaHomeScreen(
+                    transcriptProvider = LocalTranscriptProvider(context),
+                    secretStoreState = secretStoreState,
+                )
             }
         }
     }
@@ -51,10 +75,15 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LmaaHomeScreen(transcriptProvider: LocalTranscriptProvider) {
+private fun LmaaHomeScreen(
+    transcriptProvider: LocalTranscriptProvider,
+    secretStoreState: SecretStoreUiState,
+) {
     var input by rememberSaveable { mutableStateOf("") }
     var result by rememberSaveable { mutableStateOf<YoutubeUrlParseResult?>(null) }
     var transcriptState by remember { mutableStateOf<TranscriptUiState>(TranscriptUiState.Idle) }
+    var briefingState by remember { mutableStateOf<BriefingUiState>(BriefingUiState.Idle) }
+    val metadataProvider = remember { YoutubeOEmbedMetadataProvider() }
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
@@ -67,12 +96,16 @@ private fun LmaaHomeScreen(transcriptProvider: LocalTranscriptProvider) {
                 input = it
                 result = null
                 transcriptState = TranscriptUiState.Idle
+                briefingState = BriefingUiState.Idle
             },
             onValidate = {
                 result = YoutubeUrlParser.parse(input)
                 transcriptState = TranscriptUiState.Idle
+                briefingState = BriefingUiState.Idle
             },
+            secretStoreState = secretStoreState,
             transcriptState = transcriptState,
+            briefingState = briefingState,
             onFetchTranscript = {
                 val success = result as? YoutubeUrlParseResult.Success
                 if (success != null) {
@@ -83,6 +116,44 @@ private fun LmaaHomeScreen(transcriptProvider: LocalTranscriptProvider) {
                             is TranscriptFetchResult.Failure -> TranscriptUiState.Error(fetched.code)
                         }
                     }
+                }
+            },
+            onGenerateBriefing = {
+                val success = result as? YoutubeUrlParseResult.Success
+                val transcript = (transcriptState as? TranscriptUiState.Ready)?.document
+                val secretStore = (secretStoreState as? SecretStoreUiState.Ready)?.store
+                if (success != null && transcript != null && secretStore != null) {
+                    briefingState = BriefingUiState.Loading
+                    coroutineScope.launch {
+                        briefingState = try {
+                            when (val metadata = metadataProvider.fetch(success.videoId)) {
+                                is MetadataFetchResult.Failure -> BriefingUiState.Error(metadata.code)
+                                is MetadataFetchResult.Success -> {
+                                    val service = BriefingService(
+                                        OpenAiBriefingTextGenerator(secretStore),
+                                    )
+                                    when (
+                                        val briefing = service.create(
+                                            transcript,
+                                            metadata.metadata,
+                                            success.canonicalUrl,
+                                        )
+                                    ) {
+                                        is BriefingGenerationResult.Failure ->
+                                            BriefingUiState.Error(briefing.code)
+                                        is BriefingGenerationResult.Success ->
+                                            BriefingUiState.Ready(briefing.document)
+                                    }
+                                }
+                            }
+                        } catch (exception: CancellationException) {
+                            throw exception
+                        } catch (_: Exception) {
+                            BriefingUiState.Error("BRIEFING_PIPELINE_ERROR")
+                        }
+                    }
+                } else {
+                    briefingState = BriefingUiState.Error("OPENAI_KEY_MISSING")
                 }
             },
             contentPadding = contentPadding,
@@ -96,8 +167,11 @@ private fun HomeContent(
     result: YoutubeUrlParseResult?,
     onInputChanged: (String) -> Unit,
     onValidate: () -> Unit,
+    secretStoreState: SecretStoreUiState,
     transcriptState: TranscriptUiState,
+    briefingState: BriefingUiState,
     onFetchTranscript: () -> Unit,
+    onGenerateBriefing: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     Column(
@@ -117,6 +191,7 @@ private fun HomeContent(
             text = stringResource(R.string.intro),
             style = MaterialTheme.typography.bodyLarge,
         )
+        OpenAiKeySettings(secretStoreState)
         OutlinedTextField(
             value = input,
             onValueChange = onInputChanged,
@@ -137,7 +212,9 @@ private fun HomeContent(
             LinkPreview(
                 result = result,
                 transcriptState = transcriptState,
+                briefingState = briefingState,
                 onFetchTranscript = onFetchTranscript,
+                onGenerateBriefing = onGenerateBriefing,
             )
         }
 
@@ -166,7 +243,9 @@ private fun HomeContent(
 private fun LinkPreview(
     result: YoutubeUrlParseResult.Success,
     transcriptState: TranscriptUiState,
+    briefingState: BriefingUiState,
     onFetchTranscript: () -> Unit,
+    onGenerateBriefing: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -196,11 +275,39 @@ private fun LinkPreview(
                     CircularProgressIndicator()
                     Text(stringResource(R.string.transcript_loading))
                 }
-                is TranscriptUiState.Ready -> TranscriptSummary(transcriptState.document)
+                is TranscriptUiState.Ready -> {
+                    TranscriptSummary(transcriptState.document)
+                    Button(
+                        onClick = onGenerateBriefing,
+                        enabled = briefingState !is BriefingUiState.Loading,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.generate_briefing))
+                    }
+                }
                 is TranscriptUiState.Error -> Text(
                     stringResource(R.string.transcript_error, transcriptState.code),
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+            when (briefingState) {
+                BriefingUiState.Idle -> Unit
+                BriefingUiState.Loading -> {
+                    CircularProgressIndicator()
+                    Text(stringResource(R.string.briefing_loading))
+                }
+                is BriefingUiState.Error -> Text(
+                    stringResource(R.string.briefing_error, briefingState.code),
+                    color = MaterialTheme.colorScheme.error,
+                )
+                is BriefingUiState.Ready -> {
+                    Text(
+                        stringResource(R.string.briefing_ready, briefingState.document.model),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    SafeMarkdown(briefingState.document.markdown)
+                }
             }
         }
     }
@@ -241,4 +348,17 @@ private sealed interface TranscriptUiState {
     data object Loading : TranscriptUiState
     data class Ready(val document: TranscriptDocument) : TranscriptUiState
     data class Error(val code: String) : TranscriptUiState
+}
+
+private sealed interface BriefingUiState {
+    data object Idle : BriefingUiState
+    data object Loading : BriefingUiState
+    data class Ready(val document: BriefingDocument) : BriefingUiState
+    data class Error(val code: String) : BriefingUiState
+}
+
+internal sealed interface SecretStoreUiState {
+    data object Loading : SecretStoreUiState
+    data class Ready(val store: ProviderSecretStore) : SecretStoreUiState
+    data object Error : SecretStoreUiState
 }

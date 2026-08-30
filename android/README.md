@@ -16,9 +16,10 @@ zeigt die UI konstant `****`; Ersetzen beginnt immer mit einem leeren Feld.
 Secret-Store und App-Daten werden vollständig aus Cloud- und D2D-Backups
 ausgeschlossen. `EncryptedSharedPreferences` und unverschlüsselte
 `SharedPreferences` sind keine Zielarchitektur. Da das offizielle
-`datastore-tink`-Modul derzeit Alpha ist, legt ein M0-Dependency-/Gerätespike die
-konkrete Integration fest; alternativ wird stabiles Proto DataStore mit eigenem
-Tink-AEAD-Serializer eingesetzt.
+`datastore-tink`-Modul derzeit Alpha ist, verwendet die App stabiles Proto
+DataStore 1.2.1 mit eigenem Tink-1.23-AEAD-Serializer. Das verschlüsselte
+Tink-Keyset wird ohne SharedPreferences durch einen Android-Keystore-AES-GCM-
+Schlüssel geschützt und im No-Backup-Bereich gespeichert.
 
 ## Toolchain
 
@@ -32,6 +33,8 @@ Tink-AEAD-Serializer eingesetzt.
 - Android SDK Platform 36 und Build Tools 36.0.0
 - Chaquopy 17.0.0, Python 3.10, ausschließlich `arm64-v8a`
 - `youtube-transcript-api==1.2.4` mit vollständig gepinnten Python-Abhängigkeiten
+- Proto DataStore 1.2.1, Protobuf 4.32.1 und Tink Android 1.23.0
+- OkHttp/MockWebServer 5.3.0 für direkte Provideradapter und Vertragstests
 
 Der Build wird mit `gradlew.bat testDebugUnitTest assembleDebug lintDebug`
 ausgeführt. Für den Zielgerätetest ist anschließend die Debug-APK auf dem
@@ -65,9 +68,16 @@ Transkript (7.311 Segmente/210.682 Zeichen). Die produktive URL→Abruf-UI und d
 Vorvalidierung `INVALID_VIDEO_ID` wurden ebenfalls geprüft; RapidAPI wurde nicht
 aufgerufen. Die Debug-APK ist rund 27,8 MB groß.
 
-Der nächste M0-Nachweis ist der direkte oEmbed-/OpenAI-Pfad aus Android mit
-BYOK-Secret-Store; erst danach ist der vollständige Briefingpfad ohne Backend
-belegt.
+Der direkte oEmbed-/OpenAI-Pfad aus Android mit BYOK-Secret-Store ist auf dem
+Zieltablet verifiziert. Ein kurzer Test lieferte lokal 27 Transkriptsegmente;
+ein umfangreicher Map-Reduce-Test verarbeitete 7.311 Segmente und 210.682
+Zeichen. Beide riefen anschließend oEmbed und exakt `gpt-5.6-sol` direkt auf
+und renderten alle Pflichtüberschriften ohne Backend. Der lange Test enthielt
+zahlreiche Zeitmarken und Programmierbegriffe als Inline-Code. Der Key blieb
+nach Kaltstart und APK-Update als `****`
+maskiert; Ersetzen begann leer. RapidAPI wurde nicht aufgerufen. Für den
+vollständigen M0-Abschluss bleiben ein expliziter Short-Smoke und die
+Android-RapidAPI-MockWebServer-Wahrheitstabelle offen.
 
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.
