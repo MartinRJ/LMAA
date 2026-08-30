@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import de.lmaa.app.AnalysisStage
+import de.lmaa.app.BriefingStyleSnapshot
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -34,7 +35,12 @@ class AnalysisJobRepositoryInstrumentedTest {
     fun runningJob_survivesDatabaseReopen_andTerminalResultCanBeConsumed() = runBlocking {
         var database = openDatabase()
         var repository = AnalysisJobRepository(database.analysisJobDao())
-        val created = repository.create("https://www.youtube.com/watch?v=Rq5iOD-mcEI")
+        val style = BriefingStyleSnapshot("Code", "Fokus auf Implementierung", "Deutsch")
+        val created = repository.create(
+            canonicalUrl = "https://www.youtube.com/watch?v=Rq5iOD-mcEI",
+            style = style,
+            styleId = 42L,
+        )
 
         repository.markRunning(created.jobId, AnalysisStage.BRIEFING)
         assertEquals(AnalysisJobStatus.RUNNING, repository.current.first()?.status)
@@ -44,7 +50,10 @@ class AnalysisJobRepositoryInstrumentedTest {
         database = openDatabase()
         repository = AnalysisJobRepository(database.analysisJobDao())
 
-        assertEquals(created.jobId, repository.findRecoverable().single().jobId)
+        val recovered = repository.findRecoverable().single()
+        assertEquals(created.jobId, recovered.jobId)
+        assertEquals(42L, recovered.styleId)
+        assertEquals(style, recovered.style)
         repository.markFailed(created.jobId, "SYNTHETIC_ERROR")
         assertEquals("SYNTHETIC_ERROR", repository.current.first()?.errorCode)
         repository.consumeResult(created.jobId)

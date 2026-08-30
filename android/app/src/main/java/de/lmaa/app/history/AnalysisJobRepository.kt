@@ -1,6 +1,8 @@
 package de.lmaa.app.history
 
 import de.lmaa.app.AnalysisStage
+import de.lmaa.app.BriefingStyleSnapshot
+import de.lmaa.app.DEFAULT_BRIEFING_STYLE
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -20,6 +22,8 @@ internal data class AnalysisJob(
     val stage: AnalysisStage?,
     val briefingId: Long?,
     val errorCode: String?,
+    val styleId: Long?,
+    val style: BriefingStyleSnapshot,
 )
 
 internal class AnalysisJobRepository(
@@ -28,7 +32,11 @@ internal class AnalysisJobRepository(
 ) {
     val current: Flow<AnalysisJob?> = dao.observeCurrent().map { it?.toModel() }
 
-    suspend fun create(canonicalUrl: String): AnalysisJob {
+    suspend fun create(
+        canonicalUrl: String,
+        style: BriefingStyleSnapshot = DEFAULT_BRIEFING_STYLE,
+        styleId: Long? = null,
+    ): AnalysisJob {
         val now = clock()
         val job = AnalysisJobEntity(
             jobId = UUID.randomUUID().toString(),
@@ -37,6 +45,10 @@ internal class AnalysisJobRepository(
             stage = AnalysisStage.TRANSCRIPT.name,
             briefingId = null,
             errorCode = null,
+            styleId = styleId,
+            styleNameSnapshot = style.name,
+            styleInstructionsSnapshot = style.instructions,
+            styleOutputLanguageSnapshot = style.outputLanguage,
             resultConsumedAtEpochMillis = null,
             createdAtEpochMillis = now,
             updatedAtEpochMillis = now,
@@ -74,5 +86,15 @@ internal class AnalysisJobRepository(
         stage = stage?.let(AnalysisStage::valueOf),
         briefingId = briefingId,
         errorCode = errorCode,
+        styleId = styleId,
+        style = BriefingStyleSnapshot(
+            name = styleNameSnapshot.ifBlank { DEFAULT_BRIEFING_STYLE.name },
+            instructions = styleInstructionsSnapshot.ifBlank {
+                DEFAULT_BRIEFING_STYLE.instructions
+            },
+            outputLanguage = styleOutputLanguageSnapshot.ifBlank {
+                DEFAULT_BRIEFING_STYLE.outputLanguage
+            },
+        ),
     )
 }

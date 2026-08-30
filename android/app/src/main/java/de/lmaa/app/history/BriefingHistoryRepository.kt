@@ -1,7 +1,6 @@
 package de.lmaa.app.history
 
 import de.lmaa.app.CompletedAnalysis
-import de.lmaa.app.DEFAULT_STYLE_INSTRUCTIONS
 import java.util.UUID
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
@@ -12,6 +11,7 @@ internal data class BriefingHistoryItem(
     val title: String,
     val channelTitle: String,
     val model: String,
+    val styleName: String,
     val createdAtEpochMillis: Long,
 )
 
@@ -21,6 +21,9 @@ internal data class StoredBriefing(
     val title: String,
     val channelTitle: String,
     val model: String,
+    val styleName: String,
+    val styleInstructions: String,
+    val styleOutputLanguage: String,
     val transcriptLanguage: String,
     val transcriptProvider: String,
     val markdown: String,
@@ -37,6 +40,7 @@ internal class BriefingHistoryRepository(
                 title = row.title,
                 channelTitle = row.channelTitle,
                 model = row.model,
+                styleName = row.styleName,
                 createdAtEpochMillis = row.createdAtEpochMillis,
             )
         }
@@ -66,6 +70,12 @@ internal class BriefingHistoryRepository(
 
     suspend fun find(briefingId: Long): StoredBriefing? =
         dao.findBriefing(briefingId)?.toModel()
+
+    suspend fun findLatest(canonicalUrl: String): StoredBriefing? =
+        dao.findLatestBriefing(canonicalUrl)?.toModel()
+
+    suspend fun delete(briefingId: Long): Boolean =
+        dao.deleteBriefingWithOwnedData(briefingId, System.currentTimeMillis())
 
     private suspend fun requireStoredBriefing(briefingId: Long): StoredBriefing =
         requireNotNull(dao.findBriefing(briefingId)) {
@@ -98,8 +108,9 @@ internal class BriefingHistoryRepository(
     private fun briefingEntity(analysis: CompletedAnalysis, now: Long) = BriefingEntity(
         videoId = analysis.transcript.videoId,
         transcriptId = 0,
-        styleNameSnapshot = "Standard",
-        styleInstructionsSnapshot = DEFAULT_STYLE_INSTRUCTIONS,
+        styleNameSnapshot = analysis.style.name,
+        styleInstructionsSnapshot = analysis.style.instructions,
+        styleOutputLanguageSnapshot = analysis.style.outputLanguage,
         modelSnapshot = analysis.briefing.model,
         markdown = analysis.briefing.markdown,
         mapChunkCount = analysis.briefing.mapChunkCount,
@@ -125,6 +136,9 @@ internal class BriefingHistoryRepository(
         title = title,
         channelTitle = channelTitle,
         model = model,
+        styleName = styleName,
+        styleInstructions = styleInstructions,
+        styleOutputLanguage = styleOutputLanguage,
         transcriptLanguage = transcriptLanguage,
         transcriptProvider = transcriptProvider,
         markdown = markdown,

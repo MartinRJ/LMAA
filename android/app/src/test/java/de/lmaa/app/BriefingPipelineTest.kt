@@ -71,6 +71,45 @@ class BriefingPipelineTest {
         assertEquals(listOf("transcript"), calls)
     }
 
+    @Test
+    fun `selected style is passed to generation and retained as snapshot`() = runBlocking {
+        val calls = mutableListOf<String>()
+        var receivedName = ""
+        var receivedInstructions = ""
+        val selected = BriefingStyleSnapshot(
+            name = "Technisch",
+            instructions = "Fokussiere Implementierungsdetails.",
+            outputLanguage = "Deutsch",
+        )
+        val pipeline = BriefingPipeline(
+            transcriptProvider = transcriptProvider(calls),
+            metadataProvider = metadataProvider(calls),
+            briefingCreator = object : BriefingCreator {
+                override suspend fun create(
+                    transcript: TranscriptDocument,
+                    metadata: VideoMetadata,
+                    canonicalUrl: String,
+                    styleName: String,
+                    styleInstructions: String,
+                ): BriefingGenerationResult {
+                    receivedName = styleName
+                    receivedInstructions = styleInstructions
+                    return BriefingGenerationResult.Success(
+                        BriefingDocument("# Kernaussage\nInhalt", OpenAiResponsesClient.MODEL, 1),
+                    )
+                }
+            },
+        )
+
+        val result = pipeline.analyze("https://youtu.be/Rq5iOD-mcEI", selected)
+            as AnalysisResult.Success
+
+        assertEquals("Technisch", receivedName)
+        assertTrue(receivedInstructions.contains("Fokussiere Implementierungsdetails."))
+        assertTrue(receivedInstructions.contains("Ausgabesprache: Deutsch"))
+        assertEquals(selected, result.analysis.style)
+    }
+
     private fun transcriptProvider(calls: MutableList<String>) = object : TranscriptProvider {
         override suspend fun fetch(
             videoId: String,

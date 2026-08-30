@@ -34,7 +34,7 @@ Schlüssel geschützt und im No-Backup-Bereich gespeichert.
 - Chaquopy 17.0.0, Python 3.10, ausschließlich `arm64-v8a`
 - `youtube-transcript-api==1.2.4` mit vollständig gepinnten Python-Abhängigkeiten
 - Proto DataStore 1.2.1, Protobuf 4.32.1 und Tink Android 1.23.0
-- Room 2.8.4 mit KSP 2.3.10 und exportiertem Schema 2
+- Room 2.8.4 mit KSP 2.3.10 und exportiertem Schema 3
 - WorkManager 2.11.2 für persistente, langlebige Analyseaufträge
 - OkHttp/MockWebServer 5.3.0 für direkte Provideradapter und Vertragstests
 
@@ -64,13 +64,24 @@ YouTube-App startet denselben Orchestrator automatisch und wird genau einmal
 konsumiert. Der manuelle Samsung-/YouTube-Sharesheet-Smoke ist bestanden.
 
 Das Ergebnis erscheint in einer eigenen scrollbaren Detailansicht mit
-kanonischem Video-Intent, Kopieren und Teilen. Room speichert normalisierte
-Video-, Transkript- und Briefing-Daten; Stiltext und Modell werden pro Briefing
-gesnapshottet. Zwei Analysen desselben Videos bleiben getrennte Datensätze. Die
+kanonischem Video-Intent, Kopieren, Teilen und bestätigtem Löschen. Copy und
+Share enthalten Titel, Kanal, kanonische URL und Markdown. Room speichert
+normalisierte Video-, Transkript- und Briefing-Daten; Stiltext, Ausgabesprache
+und Modell werden pro Briefing gesnapshottet. Vor einer erneuten Analyse
+verweist ein Dialog auf das neueste Briefing derselben URL. Zwei Analysen
+desselben Videos bleiben getrennte Datensätze. Die
 Historie und ihr Detail-View wurden nach APK-Update und Kaltstart ohne erneute
-Analyse geöffnet. Schema 2 liegt unter `app/schemas`; die Migration 1→2 ist
+Analyse geöffnet. Schema 3 liegt unter `app/schemas`; die Migration 1→3 ist
 durch einen datenbewahrenden Instrumentierungstest verifiziert. Jede spätere
 Änderung benötigt ebenfalls Migration plus Migrationstest.
+
+Die eigene Settings-Ansicht verwaltet OpenAI- und RapidAPI-BYOK. Die
+Stilansicht unterstützt benutzerdefinierte Stile, Aktivierung, Bearbeitung und
+Löschung; der integrierte Standardstil ist geschützt. Analyseauftrag und
+Briefing speichern Name, Anweisung und Ausgabesprache als unveränderlichen
+Snapshot. Der lokale RapidAPI-Zähler erfasst Versuche und Erfolge. `/100` wird
+nur als hellgrauer Basic-Tarif-Hinweis dargestellt; das gebuchte Kontingent ist
+der App nicht bekannt.
 
 Vor dem ersten Providerrequest legt die App einen `analysis_jobs`-Datensatz an.
 Ein eindeutig benannter WorkManager-`CoroutineWorker` führt die Pipeline mit
@@ -104,7 +115,8 @@ M0-Abschluss wurden zusätzlich ein expliziter Short und die Android-RapidAPI-
 Wahrheitstabelle geprüft: `engQjz-Lm54` wurde korrekt kanonisiert und endete
 wegen deaktivierter Captions kontrolliert ohne RapidAPI-Aufruf. MockWebServer
 belegt Opt-in, Keypflicht, geschlossene Fehler-Whitelist, genau einen
-Fallbackrequest und keinen Retry bei HTTP 429. RapidAPI bleibt bei 3/100.
+Fallbackrequest und keinen Retry bei HTTP 429. RapidAPI bleibt bei drei lokal
+dokumentierten Versuchen; `/100` ist nur ein bedingter Basic-Tarif-Hinweis.
 
 Der erfolgreiche Short `Rq5iOD-mcEI` lieferte ein englisches Transkript und
 durchlief mehrfach den vollständigen Share-/Briefingpfad. Das Gegenpaar mit
@@ -113,14 +125,17 @@ getrennte Eigenschaften sind.
 
 Gerätetesthinweis: Gradles UTP-Task `connectedDebugAndroidTest` kann die Daten
 der installierten Debug-App ersetzen. Er darf deshalb nicht gegen die täglich
-genutzte Installation mit BYOK/Room-Historie laufen. Für M2 wurden stattdessen
-vier gezielte Instrumentierungstests mit `adb shell am instrument` ausgeführt;
-BYOK-Maske und vier Historieneinträge blieben erhalten. Bis eine isolierte
+genutzte Installation mit BYOK/Room-Historie laufen. Für M3 wurden stattdessen
+zehn gezielte Instrumentierungstests mit `adb shell am instrument` ausgeführt;
+BYOK-Maske und fünf Historieneinträge blieben erhalten. Bis eine isolierte
 Test-Application-ID existiert, bleibt dieses Verfahren oder ein separates
 Testgerät/-profil verbindlich.
 
-UX-To-do für M3: OpenAI-/RapidAPI-Keyverwaltung in eine eigene Settings-View
-verschieben. Der Home-View soll keine Keyeingabe mehr enthalten.
+Die M3-Settings- und Stilansichten sind auf dem Zielgerät verifiziert. Ein
+synthetischer Stil wurde angelegt, aktiviert, in einem realen OpenAI-Briefing
+gesnapshottet und danach zusammen mit dem erzeugten Testbriefing wieder entfernt;
+der Endzustand ist `Standard`, fünf bestehende Briefings und drei lokale
+RapidAPI-Versuche.
 
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.

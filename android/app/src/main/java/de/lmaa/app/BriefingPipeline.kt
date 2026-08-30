@@ -7,11 +7,27 @@ internal enum class AnalysisStage {
     PERSISTING,
 }
 
+internal data class BriefingStyleSnapshot(
+    val name: String,
+    val instructions: String,
+    val outputLanguage: String,
+) {
+    val promptInstructions: String
+        get() = "$instructions\nAusgabesprache: $outputLanguage"
+}
+
+internal val DEFAULT_BRIEFING_STYLE = BriefingStyleSnapshot(
+    name = "Standard",
+    instructions = DEFAULT_STYLE_INSTRUCTIONS,
+    outputLanguage = "Deutsch",
+)
+
 internal data class CompletedAnalysis(
     val canonicalUrl: String,
     val transcript: TranscriptDocument,
     val metadata: VideoMetadata,
     val briefing: BriefingDocument,
+    val style: BriefingStyleSnapshot = DEFAULT_BRIEFING_STYLE,
 )
 
 internal sealed interface AnalysisResult {
@@ -37,6 +53,7 @@ internal class BriefingPipeline(
 ) {
     suspend fun analyze(
         input: String,
+        style: BriefingStyleSnapshot = DEFAULT_BRIEFING_STYLE,
         onStageChanged: suspend (AnalysisStage) -> Unit = {},
     ): AnalysisResult {
         val parsed = when (val result = YoutubeUrlParser.parse(input)) {
@@ -60,7 +77,13 @@ internal class BriefingPipeline(
 
         onStageChanged(AnalysisStage.BRIEFING)
         val briefing = when (
-            val result = briefingCreator.create(transcript, metadata, parsed.canonicalUrl)
+            val result = briefingCreator.create(
+                transcript = transcript,
+                metadata = metadata,
+                canonicalUrl = parsed.canonicalUrl,
+                styleName = style.name,
+                styleInstructions = style.promptInstructions,
+            )
         ) {
             is BriefingGenerationResult.Success -> result.document
             is BriefingGenerationResult.Failure -> return AnalysisResult.Failure(result.code)
@@ -72,6 +95,7 @@ internal class BriefingPipeline(
                 transcript = transcript,
                 metadata = metadata,
                 briefing = briefing,
+                style = style,
             ),
         )
     }

@@ -50,6 +50,7 @@ class BriefingHistoryRepositoryInstrumentedTest {
         assertEquals(2, repository.history.first().size)
         assertEquals("Erstes Briefing", repository.find(first.briefingId)?.markdown)
         assertEquals("Zweites Briefing", repository.find(second.briefingId)?.markdown)
+        assertEquals(second.briefingId, repository.findLatest(first.canonicalUrl)?.briefingId)
 
         database.close()
         database = openDatabase()
@@ -60,6 +61,7 @@ class BriefingHistoryRepositoryInstrumentedTest {
         assertEquals("Erstes Briefing", restored?.markdown)
         assertEquals("Testvideo", restored?.title)
         assertEquals("https://www.youtube.com/watch?v=Rq5iOD-mcEI", restored?.canonicalUrl)
+        assertEquals(second.briefingId, repository.findLatest(first.canonicalUrl)?.briefingId)
         database.close()
     }
 
@@ -86,6 +88,28 @@ class BriefingHistoryRepositoryInstrumentedTest {
         assertTrue(duplicateRejected)
         assertEquals(1, history.history.first().size)
         assertEquals("Atomarer Abschluss", history.find(stored.briefingId)?.markdown)
+        database.close()
+    }
+
+    @Test
+    fun delete_removesOnlySelectedBriefing_andSurvivesDatabaseReopen() = runBlocking {
+        var database = openDatabase()
+        var repository = BriefingHistoryRepository(database.briefingDao())
+        val first = repository.save(analysis("Zu löschen"))
+        val second = repository.save(analysis("Bleibt erhalten"))
+
+        assertTrue(repository.delete(first.briefingId))
+        assertEquals(null, repository.find(first.briefingId))
+        assertEquals("Bleibt erhalten", repository.find(second.briefingId)?.markdown)
+        assertEquals(listOf(second.briefingId), repository.history.first().map { it.briefingId })
+        assertEquals(false, repository.delete(first.briefingId))
+
+        database.close()
+        database = openDatabase()
+        repository = BriefingHistoryRepository(database.briefingDao())
+
+        assertEquals(null, repository.find(first.briefingId))
+        assertEquals("Bleibt erhalten", repository.find(second.briefingId)?.markdown)
         database.close()
     }
 

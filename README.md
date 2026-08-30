@@ -50,7 +50,8 @@ Bereits verifiziert:
   Desktop-Referenzprototyp sowie direkt aus der Android-App.
 - Persönliches BYOK über verschlüsseltes Proto DataStore/Tink mit
   Android-Keystore-geschütztem Keyset; Kaltstart, feste `****`-Maske und leeres
-  Ersetzungsfeld sind auf dem Zieltablet verifiziert.
+  Ersetzungsfeld sind auf dem Zieltablet verifiziert. OpenAI- und RapidAPI-
+  Verwaltung liegen in einer eigenen Settings-Ansicht, nicht im Home-View.
 - Vollständiger Gerätepfad URL → lokales Transkript → oEmbed →
   `gpt-5.6-sol` → gerendertes Markdown ohne LMAA-Server.
 - Direkteingabe führt mit einer Nutzeraktion durch den vollständigen Pfad;
@@ -58,7 +59,11 @@ Bereits verifiziert:
 - Fertige Briefings erscheinen in einer eigenen Detailansicht und werden mit
   Video-/Transkript-/Stil-/Modell-Snapshots unveränderlich in Room gespeichert.
 - Die Historie ist nach Kaltstart offline verfügbar; zwei Analysen desselben
-  Videos bleiben als getrennte Briefings erhalten.
+  Videos bleiben als getrennte Briefings erhalten. Vor einer erneuten Analyse
+  zeigt die App das neueste vorhandene Briefing antippbar an. Briefings können
+  per Links-Swipe mit freigelegter Aktion oder bestätigt im Detail gelöscht werden.
+- Briefing-Stile besitzen CRUD, genau einen aktiven Stil, einen geschützten
+  Standard und unveränderliche Stil-/Sprach-Snapshots pro Auftrag und Briefing.
 - Analyseaufträge werden vor dem ersten Providerrequest in Room gespeichert und
   durch WorkManager 2.11.2 fortgesetzt. Ein Prozessabbruch während der
   Briefingphase wurde auf dem Zieltablet mit exakt einem fertigen Historieneintrag
@@ -70,7 +75,9 @@ Bereits verifiziert:
 - Umfangreicher Android-Map-Reduce-Smoke mit 7.311 Segmenten und 210.682
   Transkriptzeichen; das fertige Briefing renderte Pflichtstruktur, zahlreiche
   Zeitmarken und Programmierbegriffe mit Inline-Code.
-- RapidAPI-Testzähler: 3 von 100 Requests, konservativ 97 verbleibend.
+- RapidAPI-Testzähler: 3 lokale Versuche. Nur der UI-Span `/100` ist als
+  hellgrauer Hinweis auf einen möglichen Basic-Tarif markiert; die App kennt den
+  gebuchten Tarif nicht, das RapidAPI-Dashboard bleibt maßgeblich.
 
 M0 ist abgeschlossen. Der explizite Short `engQjz-Lm54` wurde auf dem Tablet
 korrekt kanonisiert und lieferte kontrolliert `TRANSCRIPTS_DISABLED`; wegen
@@ -133,8 +140,9 @@ durch Tests auf dem Zielgerät belegt.
   Maske `****`, niemals Klartext, Präfix oder tatsächliche Länge.
 - Jeden Versuch lokal mit Monat, Ergebnis und technischem Fehlercode zählen,
   aber niemals Key, URL oder Transkript loggen.
-- Der lokale Zähler warnt rechtzeitig vor dem persönlichen Basic/Free-Limit von
-  100 Requests; maßgeblich bleibt das RapidAPI-Dashboard.
+- Der lokale Zähler warnt anhand einer Basic-Referenz von 100 Requests. Die App
+  kennt den gebuchten Tarif nicht; deshalb ist nur `/100` visuell untergeordnet
+  und das RapidAPI-Dashboard bleibt maßgeblich.
 
 Weitere Live-Aufrufe erfolgen in M0 nur, wenn ein Fallbackfehler auf dem Tablet
 ohne realen Provider nicht diagnostizierbar ist. Tests verwenden ansonsten
@@ -174,10 +182,19 @@ synthetische Fixtures und einen Mock-Webserver.
 - Alte Briefings bleiben unveränderliche Snapshots von Stilname, Stiltext und
   Modell.
 - Neuerstellung mit anderem Stil erzeugt immer einen neuen Briefing-Datensatz.
+- Existiert zur kanonischen URL bereits ein Briefing, zeigt die App vor einer
+  erneuten manuellen/Share-Analyse das neueste Ergebnis mit Titel und Datum als
+  antippbaren Link. Eine explizite Neuerstellung aus dem Detail benötigt keine
+  zweite Bestätigung.
+- Historieneinträge lassen sich per Links-Swipe und anschließender Aktion
+  löschen. Im Detail verlangt „Briefing löschen“ immer die Bestätigung
+  „Löschen?“; nur dem Briefing gehörende verwaiste Transkript-/Videodaten werden
+  dabei mitbereinigt.
 - Detailansicht rendert Überschriften, Listen, Hervorhebung, Links, Zitate,
   Inline-Code und Codeblöcke ohne HTML-Ausführung.
 - Jedes Briefing bietet „Video auf YouTube öffnen“, Kopieren und Teilen als
-  `text/plain`.
+  `text/plain`. Copy und Share enthalten immer Titel, Kanalname, kanonische URL
+  und das vollständige Briefing-Markdown.
 
 ### Nicht im ersten MVP
 
@@ -326,7 +343,7 @@ nicht aufgerufen wird. Kein Secret befindet sich in APK, Git oder Backup.
 
 **Status:** erfüllt. Zusätzlich belegt ein expliziter Short-Smoke die
 kontrollierte Fehlerbehandlung ohne unnötigen Fallback; RapidAPI-Stand bleibt
-3/100.
+bei drei lokalen Versuchen (Basic-Referenz in der UI: `/100`).
 
 ### M1 – Persistenter vertikaler Happy Path
 
@@ -357,6 +374,9 @@ der Briefingphase stellte URL und Phase nach Kaltstart wieder her und erzeugte
 exakt einen neuen Historieneintrag. Foreground-Worker sowie Hoch-/Querformat,
 Dark Mode und 150-%-Schriftgröße wurden auf dem Gerät geprüft.
 
+Copy und Share verwenden denselben getesteten Exporttext mit Titel, Kanalname,
+kanonischer YouTube-URL und Markdown.
+
 ### M3 – Stilverwaltung und Fallback-Einstellungen
 
 - Stil-CRUD, aktiver Stil, Default-Schutz und unveränderliche Snapshots.
@@ -364,6 +384,14 @@ Dark Mode und 150-%-Schriftgröße wurden auf dem Gerät geprüft.
 - RapidAPI-Opt-in, maskierter Key, Löschen, lokaler Monatszähler und Warnungen.
 - Eigene Settings-View für OpenAI-/RapidAPI-Keyverwaltung; keine Key-Eingabe
   mehr im Home-View.
+
+**Status:** erfüllt auf dem Galaxy Tab S7+ unter Android 13. Room-Schema 3 und
+Migration 1→3, Stil-CRUD/Schutzregeln, Job-/Briefing-Snapshots, RapidAPI-BYOK,
+Opt-in und lokaler Monatszähler sind instrumentiert getestet. Ein realer Lauf
+mit einem synthetischen Stil erzeugte und renderte ein Briefing mit Stil-Snapshot
+und Kotlin-Codeblock; Testbriefing und Teststil wurden anschließend über die neue
+UI gelöscht und `Standard` wieder aktiviert. Der RapidAPI-Stand blieb bei drei
+lokalen Versuchen.
 
 ### M4 – Härtung und APK
 
@@ -383,7 +411,7 @@ Dark Mode und 150-%-Schriftgröße wurden auf dem Gerät geprüft.
 - Provideradapter verwenden synthetische Fixtures und MockWebServer.
 - Geräte-Smokes prüfen primäre Transcript-Arten, Shorts, lange Videos,
   Mobilfunk/WLAN, Prozessneustart und Scrollverhalten.
-- Datenbewahrende gezielte Instrumentierung prüft Schema-Migration 1→2,
+- Datenbewahrende gezielte Instrumentierung prüft Schema-Migration 1→3,
   Job-Reopen und atomare Job-/Briefing-Persistenz, ohne die tägliche App-
   Installation zurückzusetzen.
 - Architekturtest stellt sicher, dass kein LMAA-eigener Host kontaktiert wird.

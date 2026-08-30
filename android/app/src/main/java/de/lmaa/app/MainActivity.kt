@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.LocalActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,11 +22,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,11 +50,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -61,7 +70,10 @@ import de.lmaa.app.history.AnalysisJobRepository
 import de.lmaa.app.history.AnalysisJobStatus
 import de.lmaa.app.history.BriefingHistoryItem
 import de.lmaa.app.history.BriefingHistoryRepository
+import de.lmaa.app.history.BriefingStyle
+import de.lmaa.app.history.BriefingStyleRepository
 import de.lmaa.app.history.LmaaDatabase
+import de.lmaa.app.history.ProviderUsageRepository
 import de.lmaa.app.history.StoredBriefing
 import java.time.Instant
 import java.time.ZoneId
@@ -70,6 +82,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 class MainActivity : ComponentActivity() {
     private var shareSequence = 0L
@@ -103,6 +116,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val database = remember(context) { LmaaDatabase.getInstance(context) }
+                val styleRepository = remember(database) {
+                    BriefingStyleRepository(database.briefingStyleDao())
+                }
+                val usageRepository = remember(database) {
+                    ProviderUsageRepository(database.providerUsageDao())
+                }
+                LaunchedEffect(styleRepository, usageRepository) {
+                    styleRepository.ensureDefault()
+                    usageRepository.ensureDevelopmentBaseline()
+                }
                 LmaaApp(
                     historyRepository = remember(database) {
                         BriefingHistoryRepository(database.briefingDao())
@@ -111,6 +134,8 @@ class MainActivity : ComponentActivity() {
                         AnalysisJobRepository(database.analysisJobDao())
                     },
                     workScheduler = remember(context) { AnalysisWorkScheduler(context) },
+                    styleRepository = styleRepository,
+                    usageRepository = usageRepository,
                     secretStoreState = secretStoreState,
                     incomingShare = incomingShare.value,
                     onShareConsumed = { sequence ->
@@ -142,43 +167,91 @@ class MainActivity : ComponentActivity() {
 
 private data class IncomingShare(val sequence: Long, val text: String)
 
+private data class PendingDuplicateRequest(
+    val canonicalUrl: String,
+    val existingBriefing: StoredBriefing,
+)
+
 @Composable
 private fun LmaaApp(
     historyRepository: BriefingHistoryRepository,
     analysisJobRepository: AnalysisJobRepository,
     workScheduler: AnalysisWorkScheduler,
+    styleRepository: BriefingStyleRepository,
+    usageRepository: ProviderUsageRepository,
     secretStoreState: SecretStoreUiState,
     incomingShare: IncomingShare?,
     onShareConsumed: (Long) -> Unit,
 ) {
+    val appScope = rememberCoroutineScope()
+    var destination by rememberSaveable { mutableStateOf(AppDestination.HOME) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var regenerationUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var detail by remember { mutableStateOf<StoredBriefing?>(null) }
     LaunchedEffect(detailId) {
         val id = detailId
         detail = if (id == null) null else historyRepository.find(id)
     }
-    HandleSystemBack(enabled = detailId != null) { detailId = null }
+    LaunchedEffect(incomingShare?.sequence) {
+        if (incomingShare != null) {
+            detailId = null
+            destination = AppDestination.HOME
+        }
+    }
+    HandleSystemBack(enabled = detailId != null || destination != AppDestination.HOME) {
+        if (detailId != null) detailId = null else destination = AppDestination.HOME
+    }
 
     val currentDetail = detail
-    if (detailId == null) {
-        LmaaHomeScreen(
+    when {
+        detailId != null && currentDetail != null -> BriefingDetailScreen(
+            briefing = currentDetail,
+            onBack = { detailId = null },
+            onRegenerate = {
+                regenerationUrl = currentDetail.canonicalUrl
+                detailId = null
+                destination = AppDestination.HOME
+            },
+            onDelete = {
+                appScope.launch {
+                    if (historyRepository.delete(currentDetail.briefingId)) {
+                        detail = null
+                        detailId = null
+                    }
+                }
+            },
+        )
+        detailId != null -> CircularProgressIndicator()
+        destination == AppDestination.SETTINGS -> SettingsScreen(
+            secretStoreState = secretStoreState,
+            usageRepository = usageRepository,
+            onBack = { destination = AppDestination.HOME },
+        )
+        destination == AppDestination.STYLES -> BriefingStylesScreen(
+            repository = styleRepository,
+            onBack = { destination = AppDestination.HOME },
+        )
+        else -> LmaaHomeScreen(
             historyRepository = historyRepository,
             analysisJobRepository = analysisJobRepository,
             workScheduler = workScheduler,
+            styleRepository = styleRepository,
             secretStoreState = secretStoreState,
             incomingShare = incomingShare,
+            regenerationUrl = regenerationUrl,
             onShareConsumed = onShareConsumed,
+            onRegenerationConsumed = { regenerationUrl = null },
+            onOpenSettings = { destination = AppDestination.SETTINGS },
+            onOpenStyles = { destination = AppDestination.STYLES },
             onBriefingReady = {
                 detail = it
                 detailId = it.briefingId
             },
         )
-    } else if (currentDetail != null) {
-        BriefingDetailScreen(currentDetail, onBack = { detailId = null })
-    } else {
-        CircularProgressIndicator()
     }
 }
+
+private enum class AppDestination { HOME, SETTINGS, STYLES }
 
 @Composable
 private fun HandleSystemBack(enabled: Boolean, onBack: () -> Unit) {
@@ -201,20 +274,27 @@ private fun LmaaHomeScreen(
     historyRepository: BriefingHistoryRepository,
     analysisJobRepository: AnalysisJobRepository,
     workScheduler: AnalysisWorkScheduler,
+    styleRepository: BriefingStyleRepository,
     secretStoreState: SecretStoreUiState,
     incomingShare: IncomingShare?,
+    regenerationUrl: String?,
     onShareConsumed: (Long) -> Unit,
+    onRegenerationConsumed: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenStyles: () -> Unit,
     onBriefingReady: (StoredBriefing) -> Unit,
 ) {
     var input by rememberSaveable { mutableStateOf("") }
     var localErrorCode by rememberSaveable { mutableStateOf<String?>(null) }
     var enqueueInProgress by remember { mutableStateOf(false) }
+    var pendingDuplicate by remember { mutableStateOf<PendingDuplicateRequest?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val history by historyRepository.history.collectAsState(initial = emptyList())
+    val activeStyle by styleRepository.active.collectAsState(initial = null)
     val currentJob by analysisJobRepository.current.collectAsState(initial = null)
     val analysisState = analysisUiState(currentJob, localErrorCode, enqueueInProgress)
 
-    fun startAnalysis(rawInput: String) {
+    fun startAnalysis(rawInput: String, checkForDuplicate: Boolean = true) {
         if (enqueueInProgress) return
         input = rawInput
         localErrorCode = null
@@ -248,8 +328,34 @@ private fun LmaaHomeScreen(
             currentJob?.takeIf { it.status.isTerminal }?.let {
                 analysisJobRepository.consumeResult(it.jobId)
             }
+            val selectedStyle = try {
+                activeStyle ?: styleRepository.ensureDefault()
+            } catch (_: Exception) {
+                localErrorCode = "STYLE_LOAD_ERROR"
+                enqueueInProgress = false
+                return@launch
+            }
+
+            if (checkForDuplicate) {
+                val existing = try {
+                    historyRepository.findLatest(parsed.canonicalUrl)
+                } catch (_: Exception) {
+                    localErrorCode = "LOCAL_HISTORY_ERROR"
+                    enqueueInProgress = false
+                    return@launch
+                }
+                if (existing != null) {
+                    pendingDuplicate = PendingDuplicateRequest(parsed.canonicalUrl, existing)
+                    enqueueInProgress = false
+                    return@launch
+                }
+            }
             val job = try {
-                analysisJobRepository.create(parsed.canonicalUrl)
+                analysisJobRepository.create(
+                    canonicalUrl = parsed.canonicalUrl,
+                    style = selectedStyle.snapshot(),
+                    styleId = selectedStyle.id,
+                )
             } catch (_: Exception) {
                 localErrorCode = "LOCAL_JOB_ERROR"
                 enqueueInProgress = false
@@ -302,8 +408,28 @@ private fun LmaaHomeScreen(
         }
     }
 
+    LaunchedEffect(regenerationUrl, secretStoreState) {
+        val url = regenerationUrl
+        if (url != null && secretStoreState is SecretStoreUiState.Ready) {
+            startAnalysis(url, checkForDuplicate = false)
+            onRegenerationConsumed()
+        }
+    }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_name)) },
+                actions = {
+                    TextButton(onClick = onOpenStyles) {
+                        Text(stringResource(R.string.styles_title))
+                    }
+                    TextButton(onClick = onOpenSettings) {
+                        Text(stringResource(R.string.settings_title))
+                    }
+                },
+            )
+        },
     ) { contentPadding ->
         HomeContent(
             input = input,
@@ -320,9 +446,19 @@ private fun LmaaHomeScreen(
                     coroutineScope.launch { workScheduler.cancel(analysisJobRepository, job.jobId) }
                 }
             },
-            secretStoreState = secretStoreState,
+            activeStyle = activeStyle,
             analysisState = analysisState,
             history = history,
+            onDeleteHistory = { briefingId ->
+                coroutineScope.launch {
+                    localErrorCode = try {
+                        historyRepository.delete(briefingId)
+                        null
+                    } catch (_: Exception) {
+                        "LOCAL_DELETE_ERROR"
+                    }
+                }
+            },
             onOpenHistory = { briefingId ->
                 coroutineScope.launch {
                     val stored = try {
@@ -338,6 +474,44 @@ private fun LmaaHomeScreen(
                 }
             },
             contentPadding = contentPadding,
+        )
+    }
+    pendingDuplicate?.let { duplicate ->
+        AlertDialog(
+            onDismissRequest = { pendingDuplicate = null },
+            title = { Text(stringResource(R.string.duplicate_briefing_title)) },
+            text = {
+                TextButton(
+                    onClick = {
+                        pendingDuplicate = null
+                        onBriefingReady(duplicate.existingBriefing)
+                    },
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.duplicate_briefing_link,
+                            duplicate.existingBriefing.title,
+                            formatHistoryTime(duplicate.existingBriefing.createdAtEpochMillis),
+                        ),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDuplicate = null
+                        startAnalysis(duplicate.canonicalUrl, checkForDuplicate = false)
+                    },
+                ) {
+                    Text(stringResource(R.string.create_again))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDuplicate = null }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
         )
     }
 }
@@ -372,9 +546,10 @@ private fun HomeContent(
     onInputChanged: (String) -> Unit,
     onAnalyze: () -> Unit,
     onCancelAnalysis: () -> Unit,
-    secretStoreState: SecretStoreUiState,
+    activeStyle: BriefingStyle?,
     analysisState: AnalysisUiState,
     history: List<BriefingHistoryItem>,
+    onDeleteHistory: (Long) -> Unit,
     onOpenHistory: (Long) -> Unit,
     contentPadding: PaddingValues,
 ) {
@@ -403,7 +578,7 @@ private fun HomeContent(
                         onInputChanged = onInputChanged,
                         onAnalyze = onAnalyze,
                         onCancelAnalysis = onCancelAnalysis,
-                        secretStoreState = secretStoreState,
+                        activeStyle = activeStyle,
                         analysisState = analysisState,
                     )
                 }
@@ -414,7 +589,7 @@ private fun HomeContent(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    HistoryContent(history, onOpenHistory)
+                    HistoryContent(history, onOpenHistory, onDeleteHistory)
                 }
             }
         } else {
@@ -430,11 +605,11 @@ private fun HomeContent(
                     onInputChanged = onInputChanged,
                     onAnalyze = onAnalyze,
                     onCancelAnalysis = onCancelAnalysis,
-                    secretStoreState = secretStoreState,
+                    activeStyle = activeStyle,
                     analysisState = analysisState,
                 )
                 Spacer(Modifier.height(8.dp))
-                HistoryContent(history, onOpenHistory)
+                HistoryContent(history, onOpenHistory, onDeleteHistory)
             }
         }
     }
@@ -446,7 +621,7 @@ private fun HomePrimaryContent(
     onInputChanged: (String) -> Unit,
     onAnalyze: () -> Unit,
     onCancelAnalysis: () -> Unit,
-    secretStoreState: SecretStoreUiState,
+    activeStyle: BriefingStyle?,
     analysisState: AnalysisUiState,
 ) {
         Text(
@@ -458,7 +633,28 @@ private fun HomePrimaryContent(
             text = stringResource(R.string.intro),
             style = MaterialTheme.typography.bodyLarge,
         )
-        OpenAiKeySettings(secretStoreState)
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.active_style_title),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                Text(
+                    text = activeStyle?.name ?: stringResource(R.string.style_loading),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                activeStyle?.let {
+                    Text(
+                        text = stringResource(R.string.style_language, it.outputLanguage),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
         OutlinedTextField(
             value = input,
             onValueChange = onInputChanged,
@@ -499,6 +695,7 @@ private fun HomePrimaryContent(
 private fun HistoryContent(
     history: List<BriefingHistoryItem>,
     onOpenHistory: (Long) -> Unit,
+    onDeleteHistory: (Long) -> Unit,
 ) {
     Text(
             text = stringResource(R.string.history_title),
@@ -519,7 +716,13 @@ private fun HistoryContent(
                 )
             }
         } else {
-            history.forEach { item -> HistoryItem(item, onOpenHistory) }
+            history.forEach { item ->
+                HistoryItem(
+                    item = item,
+                    onOpen = onOpenHistory,
+                    onDelete = onDeleteHistory,
+                )
+            }
         }
 }
 
@@ -545,30 +748,74 @@ private fun AnalysisProgress(stage: AnalysisStage) {
 private fun HistoryItem(
     item: BriefingHistoryItem,
     onOpen: (Long) -> Unit,
+    onDelete: (Long) -> Unit,
 ) {
-    OutlinedButton(
-        onClick = { onOpen(item.briefingId) },
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
+    val revealWidthPx = with(LocalDensity.current) { 112.dp.toPx() }
+    var horizontalOffset by remember(item.briefingId) { mutableFloatStateOf(0f) }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (horizontalOffset < 0f) {
+            Row(
+                modifier = Modifier
+                    .matchParentSize()
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = { onDelete(item.briefingId) },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = {
+                if (horizontalOffset < 0f) horizontalOffset = 0f else onOpen(item.briefingId)
+            },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+                .offset { IntOffset(horizontalOffset.roundToInt(), 0) }
+                .pointerInput(item.briefingId, revealWidthPx) {
+                    detectHorizontalDragGestures(
+                        onDragCancel = { horizontalOffset = 0f },
+                        onDragEnd = {
+                            horizontalOffset = if (horizontalOffset <= -revealWidthPx / 3f) {
+                                -revealWidthPx
+                            } else {
+                                0f
+                            }
+                        },
+                    ) { change, dragAmount ->
+                        change.consume()
+                        horizontalOffset = (horizontalOffset + dragAmount)
+                            .coerceIn(-revealWidthPx, 0f)
+                    }
+                },
         ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(
-                    R.string.history_item_meta,
-                    item.channelTitle,
-                    formatHistoryTime(item.createdAtEpochMillis),
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(
+                        R.string.history_item_meta,
+                        item.channelTitle,
+                        item.styleName,
+                        formatHistoryTime(item.createdAtEpochMillis),
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
         }
     }
 }
@@ -578,8 +825,11 @@ private fun HistoryItem(
 private fun BriefingDetailScreen(
     briefing: StoredBriefing,
     onBack: () -> Unit,
+    onRegenerate: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val context = LocalContext.current
+    var confirmDelete by rememberSaveable(briefing.briefingId) { mutableStateOf(false) }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -613,7 +863,12 @@ private fun BriefingDetailScreen(
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        BriefingSummary(context, briefing)
+                        BriefingSummary(
+                            context = context,
+                            briefing = briefing,
+                            onRegenerate = onRegenerate,
+                            onRequestDelete = { confirmDelete = true },
+                        )
                     }
                     Column(
                         modifier = Modifier
@@ -632,16 +887,53 @@ private fun BriefingDetailScreen(
                         .padding(horizontal = 24.dp, vertical = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    BriefingSummary(context, briefing)
+                    BriefingSummary(
+                        context = context,
+                        briefing = briefing,
+                        onRegenerate = onRegenerate,
+                        onRequestDelete = { confirmDelete = true },
+                    )
                     SafeMarkdown(briefing.markdown)
                 }
             }
         }
     }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text(stringResource(R.string.briefing_delete_title)) },
+            text = {
+                Text(stringResource(R.string.briefing_delete_confirmation, briefing.title))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text(stringResource(R.string.delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable
-private fun BriefingSummary(context: Context, briefing: StoredBriefing) {
+private fun BriefingSummary(
+    context: Context,
+    briefing: StoredBriefing,
+    onRegenerate: () -> Unit,
+    onRequestDelete: () -> Unit,
+) {
             Text(
                 text = briefing.title,
                 style = MaterialTheme.typography.headlineMedium,
@@ -659,6 +951,14 @@ private fun BriefingSummary(context: Context, briefing: StoredBriefing) {
                 ),
                 style = MaterialTheme.typography.bodyMedium,
             )
+            Text(
+                text = stringResource(
+                    R.string.briefing_detail_style,
+                    briefing.styleName,
+                    briefing.styleOutputLanguage,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
             Button(
                 onClick = { openCanonicalVideo(context, briefing.canonicalUrl) },
                 modifier = Modifier.fillMaxWidth(),
@@ -666,16 +966,30 @@ private fun BriefingSummary(context: Context, briefing: StoredBriefing) {
                 Text(stringResource(R.string.open_youtube_video))
             }
             OutlinedButton(
-                onClick = { copyMarkdown(context, briefing.markdown) },
+                onClick = { copyBriefing(context, briefing) },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.copy_markdown))
             }
             OutlinedButton(
-                onClick = { shareMarkdown(context, briefing.markdown) },
+                onClick = { shareBriefing(context, briefing) },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.share_briefing))
+            }
+            OutlinedButton(
+                onClick = onRegenerate,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.regenerate_active_style))
+            }
+            TextButton(
+                onClick = onRequestDelete,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text(stringResource(R.string.briefing_delete_button))
             }
 }
 
@@ -683,20 +997,35 @@ private fun openCanonicalVideo(context: Context, canonicalUrl: String) {
     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(canonicalUrl)))
 }
 
-private fun copyMarkdown(context: Context, markdown: String) {
+private fun copyBriefing(context: Context, briefing: StoredBriefing) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
-    clipboard.setPrimaryClip(ClipData.newPlainText("LMAA-Briefing", markdown))
+    clipboard.setPrimaryClip(
+        ClipData.newPlainText("LMAA-Briefing", buildBriefingExport(briefing)),
+    )
 }
 
-private fun shareMarkdown(context: Context, markdown: String) {
+private fun shareBriefing(context: Context, briefing: StoredBriefing) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
-        putExtra(Intent.EXTRA_TEXT, markdown)
+        putExtra(Intent.EXTRA_TEXT, buildBriefingExport(briefing))
     }
     context.startActivity(
         Intent.createChooser(intent, context.getString(R.string.share_briefing)),
     )
 }
+
+internal fun buildBriefingExport(briefing: StoredBriefing): String = buildString {
+    appendLine("Titel: ${briefing.title.asSingleLine()}")
+    appendLine("Kanal: ${briefing.channelTitle.asSingleLine()}")
+    appendLine("URL: ${briefing.canonicalUrl}")
+    appendLine()
+    appendLine("---")
+    appendLine()
+    append(briefing.markdown.trim())
+}
+
+private fun String.asSingleLine(): String =
+    lineSequence().joinToString(" ") { it.trim() }.trim()
 
 private fun formatHistoryTime(epochMillis: Long): String =
     HISTORY_TIME_FORMATTER.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()))
@@ -709,6 +1038,9 @@ private fun analysisErrorMessage(code: String): String = when (code) {
     "OPENAI_KEY_MISSING" -> stringResource(R.string.openai_key_missing)
     "LOCAL_SAVE_ERROR" -> stringResource(R.string.local_save_error)
     "LOCAL_JOB_ERROR", "LOCAL_SCHEDULER_ERROR" -> stringResource(R.string.local_job_error)
+    "STYLE_LOAD_ERROR" -> stringResource(R.string.style_load_error)
+    "LOCAL_DELETE_ERROR" -> stringResource(R.string.briefing_delete_error)
+    "LOCAL_HISTORY_ERROR" -> stringResource(R.string.local_history_error)
     "TRANSCRIPTS_DISABLED", "NO_TRANSCRIPT_FOUND" ->
         stringResource(R.string.no_transcript_available)
     else -> stringResource(R.string.analysis_error, code)

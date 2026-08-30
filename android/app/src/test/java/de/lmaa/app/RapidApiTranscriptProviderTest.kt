@@ -21,9 +21,11 @@ class RapidApiTranscriptProviderTest {
                     )
                     .build(),
             )
+            var recordedStatus: Pair<Boolean, String>? = null
             val provider = RapidApiTranscriptProvider(
                 apiKey = "rapidapi-synthetic-not-real",
                 endpoint = server.url("/youtube/transcript"),
+                onRequestFinished = { success, status -> recordedStatus = success to status },
             )
 
             val result = provider.fetch("ABCDEFGHIJK", listOf("en"))
@@ -37,6 +39,7 @@ class RapidApiTranscriptProviderTest {
             assertEquals("youtube-transcripts.p.rapidapi.com", request.headers["X-RapidAPI-Host"])
             assertEquals("ABCDEFGHIJK", request.url.queryParameter("videoId"))
             assertEquals("false", request.url.queryParameter("text"))
+            assertEquals(true to "SUCCESS", recordedStatus)
         } finally {
             server.close()
         }
@@ -48,9 +51,11 @@ class RapidApiTranscriptProviderTest {
         server.start()
         try {
             server.enqueue(MockResponse.Builder().code(429).build())
+            var recordedStatus: Pair<Boolean, String>? = null
             val provider = RapidApiTranscriptProvider(
                 apiKey = "rapidapi-synthetic-not-real",
                 endpoint = server.url("/youtube/transcript"),
+                onRequestFinished = { success, status -> recordedStatus = success to status },
             )
 
             val result = provider.fetch("ABCDEFGHIJK", listOf("en"))
@@ -60,6 +65,7 @@ class RapidApiTranscriptProviderTest {
                 (result as TranscriptFetchResult.Failure).code,
             )
             assertEquals(1, server.requestCount)
+            assertEquals(false to "RAPIDAPI_QUOTA_EXCEEDED", recordedStatus)
         } finally {
             server.close()
         }
