@@ -66,4 +66,23 @@ class YoutubeOEmbedMetadataProviderTest {
             server.close()
         }
     }
+
+    @Test
+    fun notFoundAndHttpErrorsHaveStableCodesAndNoRetry() = runBlocking {
+        listOf(404 to "VIDEO_NOT_FOUND", 503 to "OEMBED_HTTP_503").forEach { (code, expected) ->
+            val server = MockWebServer()
+            server.start()
+            try {
+                server.enqueue(MockResponse.Builder().code(code).build())
+
+                val result = YoutubeOEmbedMetadataProvider(endpoint = server.url("/oembed"))
+                    .fetch("ABCDEFGHIJK")
+
+                assertEquals(expected, (result as MetadataFetchResult.Failure).code)
+                assertEquals(1, server.requestCount)
+            } finally {
+                server.close()
+            }
+        }
+    }
 }

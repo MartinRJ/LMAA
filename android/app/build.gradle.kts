@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("androidx.room")
@@ -5,6 +7,17 @@ plugins {
     id("com.google.devtools.ksp")
     id("com.google.protobuf")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val releaseSigningFile = rootProject.file("signing.properties")
+val releaseSigningProperties = Properties().apply {
+    if (releaseSigningFile.isFile) {
+        releaseSigningFile.inputStream().use(::load)
+    }
+}
+val releaseSigningKeys = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val releaseSigningConfigured = releaseSigningKeys.all { key ->
+    !releaseSigningProperties.getProperty(key).isNullOrBlank()
 }
 
 android {
@@ -25,6 +38,35 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigningProperties.getProperty("storeFile"))
+                storePassword = releaseSigningProperties.getProperty("storePassword")
+                keyAlias = releaseSigningProperties.getProperty("keyAlias")
+                keyPassword = releaseSigningProperties.getProperty("keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        create("instrumented") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".testbed"
+            versionNameSuffix = "-testbed"
+            matchingFallbacks += listOf("debug")
+        }
+        getByName("release") {
+            signingConfig = if (releaseSigningConfigured) {
+                signingConfigs.getByName("release")
+            } else {
+                null
+            }
+        }
+    }
+    testBuildType = providers.gradleProperty("lmaa.testBuildType")
+        .orElse("instrumented")
+        .get()
+
     buildFeatures {
         compose = true
         buildConfig = false
@@ -37,6 +79,26 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+}
+
+val verifyReleaseSigning by tasks.registering {
+    group = "verification"
+    description = "Prüft die lokale, nicht versionierte Release-Signing-Konfiguration."
+    doLast {
+        check(releaseSigningConfigured) {
+            "android/signing.properties fehlt oder ist unvollständig; Vorlage: signing.properties.example"
+        }
+        val configuredStore = rootProject.file(releaseSigningProperties.getProperty("storeFile"))
+        check(configuredStore.isFile) {
+            "Konfigurierter Release-Keystore existiert nicht: $configuredStore"
+        }
+    }
+}
+
+tasks.configureEach {
+    if (name in setOf("packageRelease", "assembleRelease", "bundleRelease")) {
+        dependsOn(verifyReleaseSigning)
     }
 }
 

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Lmaa" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#C8C0E8</item>
+        <item name="android:navigationBarColor">#12140F</item>
+        <item name="android:statusBarColor">#12140F</item>
+        <item name="android:windowBackground">#12140F</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>

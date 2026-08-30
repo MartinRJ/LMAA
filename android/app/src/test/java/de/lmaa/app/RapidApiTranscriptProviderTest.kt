@@ -9,18 +9,12 @@ import org.junit.Test
 
 class RapidApiTranscriptProviderTest {
     @Test
-    fun requestUsesSensitiveHeadersAndNormalizesMilliseconds() = runBlocking {
+    fun defaultProfileRendersPlaceholdersAndReturnsBodyUnchanged() = runBlocking {
         val server = MockWebServer()
         server.start()
         try {
-            server.enqueue(
-                MockResponse.Builder()
-                    .code(200)
-                    .body(
-                        """{"lang":"en","isGenerated":true,"content":[{"text":"Synthetic","offset":1500,"duration":2000}]}""",
-                    )
-                    .build(),
-            )
+            val raw = """{"content":[{"text":"Synthetic\\nraw","offset":1500}]}"""
+            server.enqueue(jsonResponse(raw))
             var recordedStatus: Pair<Boolean, String>? = null
             val provider = RapidApiTranscriptProvider(
                 apiKey = "rapidapi-synthetic-not-real",
@@ -28,17 +22,18 @@ class RapidApiTranscriptProviderTest {
                 onRequestFinished = { success, status -> recordedStatus = success to status },
             )
 
-            val result = provider.fetch("ABCDEFGHIJK", listOf("en"))
+            val result = provider.fetch("ABCDEFGHIJK", listOf("de"))
                 as TranscriptFetchResult.Success
 
-            assertEquals("rapidapi", result.document.provider)
-            assertTrue(result.document.isGenerated)
-            assertEquals(TranscriptSegment("Synthetic", 1.5, 2.0), result.document.segments.single())
+            assertEquals(raw, result.document.rawContent)
+            assertTrue(result.document.segments.isEmpty())
+            assertEquals("rapidapi:youtube-transcripts", result.document.provider)
             val request = server.takeRequest()
             assertEquals("rapidapi-synthetic-not-real", request.headers["X-RapidAPI-Key"])
             assertEquals("youtube-transcripts.p.rapidapi.com", request.headers["X-RapidAPI-Host"])
             assertEquals("ABCDEFGHIJK", request.url.queryParameter("videoId"))
-            assertEquals("false", request.url.queryParameter("text"))
+            assertEquals("https://www.youtube.com/watch?v=ABCDEFGHIJK", request.url.queryParameter("url"))
+            assertEquals("de", request.url.queryParameter("lang"))
             assertEquals(true to "SUCCESS", recordedStatus)
         } finally {
             server.close()
@@ -46,28 +41,90 @@ class RapidApiTranscriptProviderTest {
     }
 
     @Test
-    fun quotaResponseIsNotRetried() = runBlocking {
+    fun configuredPostBodyAndSuccessStatusAreSupported() = runBlocking {
         val server = MockWebServer()
         server.start()
         try {
-            server.enqueue(MockResponse.Builder().code(429).build())
-            var recordedStatus: Pair<Boolean, String>? = null
-            val provider = RapidApiTranscriptProvider(
+            server.enqueue(jsonResponse("{\"ok\":true}", code = 201))
+            val profile = RapidApiProfile.DEFAULT.copy(
+                method = RapidApiHttpMethod.POST,
+                queryParameters = emptyList(),
+                headers = RapidApiProfile.DEFAULT.headers +
+                    RapidApiTemplateEntry("Content-Type", "application/json; charset=utf-8"),
+                bodyTemplate = "{\"video\":\"{{video_id}}\",\"language\":\"{{language}}\"}",
+                successStatusCodes = "201",
+            )
+            val result = RapidApiTranscriptProvider(
                 apiKey = "rapidapi-synthetic-not-real",
-                endpoint = server.url("/youtube/transcript"),
-                onRequestFinished = { success, status -> recordedStatus = success to status },
-            )
+                profile = profile,
+                endpoint = server.url("/transcribe"),
+            ).fetch("ABCDEFGHIJK", listOf("en"))
 
-            val result = provider.fetch("ABCDEFGHIJK", listOf("en"))
-
-            assertEquals(
-                "RAPIDAPI_QUOTA_EXCEEDED",
-                (result as TranscriptFetchResult.Failure).code,
-            )
-            assertEquals(1, server.requestCount)
-            assertEquals(false to "RAPIDAPI_QUOTA_EXCEEDED", recordedStatus)
+            assertTrue(result is TranscriptFetchResult.Success)
+            val request = server.takeRequest()
+            assertEquals("POST", request.method)
+            assertEquals("{\"video\":\"ABCDEFGHIJK\",\"language\":\"en\"}", request.body?.utf8())
         } finally {
             server.close()
         }
     }
+
+    @Test
+    fun quotaHttpContentTypeEmptyAndLimitFailuresAreCountedExactlyOnce() = runBlocking {
+        val cases = listOf(
+            Triple(
+                MockResponse.Builder().code(429).build(),
+                RapidApiProfile.DEFAULT,
+                "RAPIDAPI_QUOTA_EXCEEDED",
+            ),
+            Triple(
+                MockResponse.Builder().code(503).build(),
+                RapidApiProfile.DEFAULT,
+                "RAPIDAPI_HTTP_503",
+            ),
+            Triple(
+                MockResponse.Builder().code(200).addHeader("Content-Type", "text/html")
+                    .body("x").build(),
+                RapidApiProfile.DEFAULT,
+                "RAPIDAPI_CONTENT_TYPE_NOT_ALLOWED",
+            ),
+            Triple(jsonResponse(""), RapidApiProfile.DEFAULT, "RAPIDAPI_EMPTY_RESPONSE"),
+            Triple(
+                jsonResponse("x".repeat(1_025)),
+                RapidApiProfile.DEFAULT.copy(maxResponseBytes = 1_024),
+                "RAPIDAPI_RESPONSE_TOO_LARGE",
+            ),
+        )
+        cases.forEach { (response, profile, expectedCode) ->
+            val server = MockWebServer()
+            server.start()
+            try {
+                server.enqueue(response)
+                var callbackCount = 0
+                var recordedStatus: Pair<Boolean, String>? = null
+                val result = RapidApiTranscriptProvider(
+                    apiKey = "rapidapi-synthetic-not-real",
+                    profile = profile,
+                    endpoint = server.url("/youtube/transcript"),
+                    onRequestFinished = { success, status ->
+                        callbackCount += 1
+                        recordedStatus = success to status
+                    },
+                ).fetch("ABCDEFGHIJK", listOf("en"))
+
+                assertEquals(expectedCode, (result as TranscriptFetchResult.Failure).code)
+                assertEquals(1, server.requestCount)
+                assertEquals(1, callbackCount)
+                assertEquals(false to expectedCode, recordedStatus)
+            } finally {
+                server.close()
+            }
+        }
+    }
+
+    private fun jsonResponse(body: String, code: Int = 200): MockResponse = MockResponse.Builder()
+        .code(code)
+        .addHeader("Content-Type", "application/json; charset=utf-8")
+        .body(body)
+        .build()
 }

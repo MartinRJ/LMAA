@@ -44,6 +44,41 @@ class BriefingServiceTest {
         assertTrue(generator.calls.last().second.contains("Teil $chunkCount/$chunkCount"))
     }
 
+    @Test
+    fun rapidApiRawResponseIsPassedUnchangedAsUntrustedData() = runBlocking {
+        val raw = """{"items":[{"text":"Zeile 1\\nZeile 2","start":1.25}],"opaque":true}"""
+        val generator = FakeBriefingGenerator(mutableListOf(validMarkdown()))
+
+        val result = BriefingService(generator).create(
+            transcript = transcript().copy(
+                provider = "rapidapi:custom",
+                segments = emptyList(),
+                rawContent = raw,
+            ),
+            metadata = metadata(),
+            canonicalUrl = "https://www.youtube.com/watch?v=ABCDEFGHIJK",
+        )
+
+        assertTrue(result is BriefingGenerationResult.Success)
+        val input = generator.calls.single().second
+        assertTrue(input.contains("BEGIN UNTRUSTED_RAPIDAPI_RAW_RESPONSE"))
+        assertTrue(input.contains(raw))
+        assertEquals(raw, input.substringAfter("BEGIN UNTRUSTED_RAPIDAPI_RAW_RESPONSE ---\n")
+            .substringBefore("\n--- END UNTRUSTED_RAPIDAPI_RAW_RESPONSE"))
+    }
+
+    @Test
+    fun rawChunkingPreservesUnicodeExactly() {
+        val raw = "a😀b😀c"
+        val chunks = chunkRawResponse(raw, 2)
+
+        assertEquals(raw, chunks.joinToString(""))
+        assertTrue(chunks.none { chunk ->
+            chunk.firstOrNull()?.isLowSurrogate() == true ||
+                chunk.lastOrNull()?.isHighSurrogate() == true
+        })
+    }
+
     private class FakeBriefingGenerator(
         private val responses: MutableList<String>,
     ) : BriefingTextGenerator {

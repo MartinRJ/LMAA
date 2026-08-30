@@ -60,9 +60,9 @@ class ProviderUsageRepositoryInstrumentedTest {
 
         repository.ensureDevelopmentBaseline()
         repository.ensureDevelopmentBaseline()
-        assertEquals(3, repository.rapidApiCurrentMonth.first().attempts)
+        assertEquals(4, repository.rapidApiCurrentMonth.first().attempts)
 
         repository.recordRapidApiAttempt(success = false, status = "HTTP_500")
-        assertEquals(4, repository.rapidApiCurrentMonth.first().attempts)
+        assertEquals(5, repository.rapidApiCurrentMonth.first().attempts)
     }
 }

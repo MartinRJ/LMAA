@@ -101,7 +101,8 @@ internal class BriefingHistoryRepository(
         languageCode = analysis.transcript.languageCode,
         isGenerated = analysis.transcript.isGenerated,
         segmentsJson = encodeSegments(analysis),
-        plainText = analysis.transcript.segments.joinToString("\n") { it.text },
+        plainText = analysis.transcript.rawContent
+            ?: analysis.transcript.segments.joinToString("\n") { it.text },
         fetchedAtEpochMillis = now,
     )
 

@@ -6,77 +6,111 @@ import org.junit.Test
 
 class TranscriptFallbackResolverTest {
     @Test
-    fun primarySuccessNeverCallsFallback() = runBlocking {
-        val primary = FakeTranscriptProvider(success("primary"))
-        val fallback = FakeTranscriptProvider(success("rapidapi"))
+    fun offUsesOnlyLocalProvider() = runBlocking {
+        val local = FakeTranscriptProvider(success("primary"))
+        val rapidApi = FakeTranscriptProvider(success("rapidapi"))
 
-        val result = TranscriptFallbackResolver(primary, fallback).fetch(
+        val result = TranscriptFallbackResolver(local, rapidApi).fetch(
             "ABCDEFGHIJK",
-            fallbackEnabled = true,
+            routingMode = RapidApiRoutingMode.OFF,
         ) as TranscriptFetchResult.Success
 
         assertEquals("primary", result.document.provider)
-        assertEquals(0, fallback.callCount)
+        assertEquals(1, local.callCount)
+        assertEquals(0, rapidApi.callCount)
     }
 
     @Test
-    fun optOutNeverCallsFallbackForAllowedError() = runBlocking {
-        val fallback = FakeTranscriptProvider(success("rapidapi"))
-
-        val result = TranscriptFallbackResolver(
-            FakeTranscriptProvider(failure("REQUEST_BLOCKED")),
-            fallback,
-        ).fetch("ABCDEFGHIJK", fallbackEnabled = false)
-
-        assertEquals("REQUEST_BLOCKED", (result as TranscriptFetchResult.Failure).code)
-        assertEquals(0, fallback.callCount)
-    }
-
-    @Test
-    fun allowedTechnicalErrorsCallFallbackExactlyOnce() = runBlocking {
+    fun fallbackUsesRapidApiExactlyOnceOnlyForAllowedLocalFailures() = runBlocking {
         listOf("REQUEST_BLOCKED", "REQUEST_FAILED").forEach { code ->
-            val fallback = FakeTranscriptProvider(success("rapidapi"))
+            val local = FakeTranscriptProvider(failure(code))
+            val rapidApi = FakeTranscriptProvider(success("rapidapi"))
 
-            val result = TranscriptFallbackResolver(
-                FakeTranscriptProvider(failure(code)),
-                fallback,
-            ).fetch("ABCDEFGHIJK", fallbackEnabled = true)
+            val result = TranscriptFallbackResolver(local, rapidApi).fetch(
+                "ABCDEFGHIJK",
+                routingMode = RapidApiRoutingMode.FALLBACK,
+            ) as TranscriptFetchResult.Success
 
-            assertEquals("rapidapi", (result as TranscriptFetchResult.Success).document.provider)
-            assertEquals(1, fallback.callCount)
+            assertEquals("rapidapi", result.document.provider)
+            assertEquals(1, local.callCount)
+            assertEquals(1, rapidApi.callCount)
         }
     }
 
     @Test
-    fun semanticAndApplicationErrorsNeverCallFallback() = runBlocking {
-        val disallowed = listOf(
+    fun fallbackDoesNotSpendQuotaForSemanticLocalFailures() = runBlocking {
+        listOf(
             "INVALID_VIDEO_ID",
             "TRANSCRIPTS_DISABLED",
             "NO_TRANSCRIPT",
             "VIDEO_UNAVAILABLE",
             "PYTHON_BRIDGE_ERROR",
             "INTERNAL_ERROR",
-        )
-        disallowed.forEach { code ->
-            val fallback = FakeTranscriptProvider(success("rapidapi"))
-
+        ).forEach { code ->
+            val rapidApi = FakeTranscriptProvider(success("rapidapi"))
             val result = TranscriptFallbackResolver(
                 FakeTranscriptProvider(failure(code)),
-                fallback,
-            ).fetch("ABCDEFGHIJK", fallbackEnabled = true)
+                rapidApi,
+            ).fetch("ABCDEFGHIJK", routingMode = RapidApiRoutingMode.FALLBACK)
 
             assertEquals(code, (result as TranscriptFetchResult.Failure).code)
-            assertEquals(0, fallback.callCount)
+            assertEquals(0, rapidApi.callCount)
         }
     }
 
     @Test
-    fun enabledFallbackWithoutConfiguredKeyFailsBeforeNetwork() = runBlocking {
-        val result = TranscriptFallbackResolver(
-            FakeTranscriptProvider(failure("REQUEST_BLOCKED")),
-        ).fetch("ABCDEFGHIJK", fallbackEnabled = true)
+    fun preferredUsesRapidApiFirstAndDoesNotCallLocalOnSuccess() = runBlocking {
+        val local = FakeTranscriptProvider(success("primary"))
+        val rapidApi = FakeTranscriptProvider(success("rapidapi"))
 
-        assertEquals("RAPIDAPI_KEY_MISSING", (result as TranscriptFetchResult.Failure).code)
+        val result = TranscriptFallbackResolver(local, rapidApi).fetch(
+            "ABCDEFGHIJK",
+            routingMode = RapidApiRoutingMode.PREFERRED,
+        ) as TranscriptFetchResult.Success
+
+        assertEquals("rapidapi", result.document.provider)
+        assertEquals(0, local.callCount)
+        assertEquals(1, rapidApi.callCount)
+    }
+
+    @Test
+    fun preferredFallsBackToLocalExactlyOnceForTechnicalRapidApiFailures() = runBlocking {
+        listOf(
+            "RAPIDAPI_TIMEOUT",
+            "RAPIDAPI_NETWORK_ERROR",
+            "RAPIDAPI_HTTP_503",
+            "RAPIDAPI_QUOTA_EXCEEDED",
+            "RAPIDAPI_RESPONSE_TOO_LARGE",
+        ).forEach { code ->
+            val local = FakeTranscriptProvider(success("primary"))
+            val rapidApi = FakeTranscriptProvider(failure(code))
+
+            val result = TranscriptFallbackResolver(local, rapidApi).fetch(
+                "ABCDEFGHIJK",
+                routingMode = RapidApiRoutingMode.PREFERRED,
+            ) as TranscriptFetchResult.Success
+
+            assertEquals("primary", result.document.provider)
+            assertEquals(1, rapidApi.callCount)
+            assertEquals(1, local.callCount)
+        }
+    }
+
+    @Test
+    fun preferredDoesNotHideInvalidProfileOrMissingKey() = runBlocking {
+        listOf("RAPIDAPI_PROFILE_INVALID", "RAPIDAPI_KEY_HEADER_INVALID").forEach { code ->
+            val local = FakeTranscriptProvider(success("primary"))
+            val result = TranscriptFallbackResolver(
+                local,
+                FakeTranscriptProvider(failure(code)),
+            ).fetch("ABCDEFGHIJK", routingMode = RapidApiRoutingMode.PREFERRED)
+
+            assertEquals(code, (result as TranscriptFetchResult.Failure).code)
+            assertEquals(0, local.callCount)
+        }
+        val missing = TranscriptFallbackResolver(FakeTranscriptProvider(success("primary")))
+            .fetch("ABCDEFGHIJK", routingMode = RapidApiRoutingMode.PREFERRED)
+        assertEquals("RAPIDAPI_KEY_MISSING", (missing as TranscriptFetchResult.Failure).code)
     }
 
     private class FakeTranscriptProvider(
