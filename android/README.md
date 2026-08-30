@@ -76,8 +76,11 @@ und renderten alle Pflichtüberschriften ohne Backend. Der lange Test enthielt
 zahlreiche Zeitmarken und Programmierbegriffe als Inline-Code. Der Key blieb
 nach Kaltstart und APK-Update als `****`
 maskiert; Ersetzen begann leer. RapidAPI wurde nicht aufgerufen. Für den
-vollständigen M0-Abschluss bleiben ein expliziter Short-Smoke und die
-Android-RapidAPI-MockWebServer-Wahrheitstabelle offen.
+M0-Abschluss wurden zusätzlich ein expliziter Short und die Android-RapidAPI-
+Wahrheitstabelle geprüft: `engQjz-Lm54` wurde korrekt kanonisiert und endete
+wegen deaktivierter Captions kontrolliert ohne RapidAPI-Aufruf. MockWebServer
+belegt Opt-in, Keypflicht, geschlossene Fehler-Whitelist, genau einen
+Fallbackrequest und keinen Retry bei HTTP 429. RapidAPI bleibt bei 3/100.
 
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.

@@ -28,12 +28,19 @@ sealed interface TranscriptFetchResult {
     data class Failure(val code: String) : TranscriptFetchResult
 }
 
-class LocalTranscriptProvider(context: Context) {
-    private val applicationContext = context.applicationContext
-
+interface TranscriptProvider {
     suspend fun fetch(
         videoId: String,
         preferredLanguages: List<String> = listOf("de", "de-DE", "en", "en-US", "en-GB"),
+    ): TranscriptFetchResult
+}
+
+class LocalTranscriptProvider(context: Context) : TranscriptProvider {
+    private val applicationContext = context.applicationContext
+
+    override suspend fun fetch(
+        videoId: String,
+        preferredLanguages: List<String>,
     ): TranscriptFetchResult = withContext(Dispatchers.IO) {
         runCatching {
             ensurePythonStarted()

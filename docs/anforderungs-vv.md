@@ -31,15 +31,15 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
 | ID | Anforderung | Validation | Verification am 2026-08-30 | Nächster Nachweis |
 |---|---|---|---|---|
 | LOC-001 | Kein LMAA-Server, kein PC, keine Domain | **validiert**; entspricht dem persönlichen mobilen Workflow und vermeidet zusätzliche Betriebskosten | **erfüllt für M0**; produktiver URL→lokales Transkript→oEmbed→OpenAI→Markdown-Pfad läuft autonom auf dem Tablet | in M1 mit Room-Persistenz wiederholen |
-| TRN-001 | `youtube-transcript-api` läuft primär in der APK | **validiert**; Chaquopy 17 passt zu AGP 9.2.1, minSdk 26, Python 3.10 und ARM64 | **erfüllt**; APK-/Offline-Build und mehrere reale Geräteabrufe bestanden | Regression und expliziten YouTube-Short ergänzen |
+| TRN-001 | `youtube-transcript-api` läuft primär in der APK | **validiert**; Chaquopy 17 passt zu AGP 9.2.1, minSdk 26, Python 3.10 und ARM64 | **erfüllt**; APK-/Offline-Build, mehrere reale Abrufe und expliziter Short mit kontrolliertem `TRANSCRIPTS_DISABLED` bestanden | erfolgreichen CC-Short ergänzend regressieren |
 | TRN-002 | Kein API-Key für den Primärtranskriptpfad | **validiert**; die Bibliothek fordert keinen Key und keinen Headless Browser | **erfüllt auf dem Zielgerät**; lokale Key-Dateien fehlen in der APK, RapidAPI wurde nicht aufgerufen | APK-Secret-Scan fortführen |
-| FAL-001 | RapidAPI nur nach geeignetem Primärfehler und Opt-in | **validiert**; schont das persönliche 100-Request-Kontingent | **Referenzlogik verifiziert, Android offen**; bisher 3/100 Live-Versuche | MockWebServer-Wahrheitstabelle in Android; kein weiterer Live-Aufruf nötig |
+| FAL-001 | RapidAPI nur nach geeignetem Primärfehler und Opt-in | **validiert**; schont das persönliche 100-Request-Kontingent | **erfüllt für M0**; Android-Adapter und Wahrheitstabelle erzwingen Opt-in, Key, Fehler-Whitelist, exakt einen Request und keinen 429-Retry; Short mit deaktivierten Captions löste keinen Fallback aus | M3 ergänzt Einstellungs-UX und Monatszähler |
 | MET-001 | Titel, Kanalname und Thumbnail über oEmbed | **validiert**; genügt dem MVP ohne zusätzlichen Key | **erfüllt**; MockWebServer-Verträge und realer Android-oEmbed-Pfad bestanden, weitere Felder bleiben nullable | Regression in M1 |
 | AIG-001 | Briefing mit exakt `gpt-5.6-sol`, ohne Modellfallback | **validiert**; Modell und Responses-Endpunkt existieren und wurden praktisch erreicht | **erfüllt für M0**; kurzer und umfangreicher direkter Android-Pfad mit `store=false`, leerer Toolliste, Map-Reduce, allen Pflichtüberschriften, Zeitmarken und Inline-Code bestanden | weitere repräsentative Inhalte in M1/M4 evaluieren |
 | SEC-001 | Persönliches BYOK; kein Secret in APK, Git, Logs oder Backup | **bedingt validiert**; Proto DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset erfüllt das lokale Bedrohungsmodell, direkter Client-Key bleibt ein Restrisiko | **erfüllt für M0**; Ciphertext-/Keystore-Instrumentierung, No-Backup-Regeln, Kaltstart, `****`, leeres Ersetzen sowie APK-/Git-Scan bestanden | Lösch-UX weiter regressieren; Restrisiko bleibt akzeptierte Ausnahme |
 | DAT-001 | Historie und Snapshots lokal in Room | **validiert** | **offen** | Schema, Migrationstest und Neustart-Smoke |
 | UI-001 | Sicheres, langes Markdown einschließlich Code | **validiert** | **erfüllt**; Parsertests und Zielgerät-Smokes bestanden | Regressionstests fortführen |
-| COST-001 | Kein eigener Server; RapidAPI meist innerhalb Basic/Free | **validiert**; eigener Server entfällt, RapidAPI bleibt Ausnahme | **teilweise erfüllt**; vollständiger Hauptpfad benötigt keinen Server und löste keinen RapidAPI-Aufruf aus | Android-Fallbackvertrag und lokaler Monatszähler |
+| COST-001 | Kein eigener Server; RapidAPI meist innerhalb Basic/Free | **validiert**; eigener Server entfällt, RapidAPI bleibt Ausnahme | **erfüllt für M0**; Hauptpfad und semantischer Short-Fehler benötigen keinen Server und keinen RapidAPI-Aufruf; Adapter hat keinen automatischen Retry | M3 ergänzt lokalen Monatszähler |
 
 ## Machbarkeitsprüfung des lokalen Transkriptpfads
 
@@ -114,11 +114,11 @@ und atomisches Löschen; ein Kaltstart-Smoke belegt die persistente `****`-Maske
 2. **Erfüllt:** Drei synthetische Python-Bridge-Tests prüfen Normalisierung,
    Vorvalidierung und Sprachcodefilter; reale Geräte-Smokes prüfen die
    Python/Kotlin-Grenze.
-3. **Teilweise erfüllt:** Geräte-Smokes rufen manuelle/automatische,
-   deutsche/englische, kurze und lange Transkripte primär lokal ab. Ein
-   explizit als YouTube Short verifizierter Fall bleibt offen.
-4. MockWebServer erzwingt jeden zulässigen und unzulässigen Fallbackfall und zählt
-   ausgehende RapidAPI-Requests.
+3. **Erfüllt:** Geräte-Smokes rufen manuelle/automatische, deutsche/englische,
+   kurze und lange Transkripte primär lokal ab; ein expliziter Short wurde
+   kontrolliert als `TRANSCRIPTS_DISABLED` klassifiziert.
+4. **Erfüllt:** MockWebServer erzwingt jeden zulässigen und unzulässigen
+   Fallbackfall und zählt ausgehende RapidAPI-Requests.
 5. **Erfüllt:** Direkter oEmbed- und OpenAI-Pfad läuft auf dem Tablet; OpenAI
    antwortete mit exakt `gpt-5.6-sol` und allen Pflichtüberschriften.
 6. Netzwerkprüfung zeigt ausschließlich erwartete Providerhosts und keinen
