@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LMAA</string>
+    <string name="app_title">Local Media Analysis Assistant</string>
+    <string name="intro">YouTube-Briefings für Menschen, die informiert statt hingehalten werden möchten.</string>
+    <string name="url_label">YouTube-Link</string>
+    <string name="url_placeholder">https://youtu.be/…</string>
+    <string name="validate_link">Link prüfen</string>
+    <string name="ready_for_analysis">Bereit für die Analyse</string>
+    <string name="canonical_url">Kanonische URL</string>
+    <string name="history_title">Bisherige Briefings</string>
+    <string name="history_empty">Noch keine Briefings. Der erste vollständige Analysepfad folgt als Nächstes.</string>
+    <string name="url_error_empty">Bitte einen YouTube-Link eingeben.</string>
+    <string name="url_error_invalid">Kein unterstützter YouTube-Link erkannt.</string>
+    <string name="url_error_ambiguous">Bitte nur einen YouTube-Link auf einmal eingeben.</string>
+</resources>

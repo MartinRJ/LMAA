@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reference-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Installieren
+        run: python -m pip install -e ".[dev]"
+      - name: Ruff
+        run: |
+          python -m ruff check .
+          python -m ruff format --check .
+      - name: Tests
+        run: python -m pytest
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Android SDK installieren
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Tests, APK und Lint
+        run: bash android/gradlew -p android testDebugUnitTest assembleDebug lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lmaa-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

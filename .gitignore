@@ -1,0 +1,35 @@
+# Lokale Konfiguration und Secrets
+.env
+.env.*
+!.env.example
+OpenAI API KEY.txt
+youtube-transcripts Key.txt
+provider-smoke-usage.json
+local.properties
+*.jks
+*.keystore
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.tooling/
+dist/
+build/
+*.egg-info/
+
+# Android / Gradle
+.gradle/
+.idea/
+android/.kotlin/
+android/**/build/
+*.apk
+*.aab
+
+# Betriebssystem / Editor
+.DS_Store
+Thumbs.db
+*.iml
