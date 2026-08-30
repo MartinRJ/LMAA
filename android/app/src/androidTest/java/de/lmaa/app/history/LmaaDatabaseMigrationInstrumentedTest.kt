@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class LmaaDatabaseMigrationInstrumentedTest {
     private lateinit var context: Context
-    private val databaseName = "lmaa-migration-1-2-instrumented-test.db"
+    private val databaseName = "lmaa-migration-1-3-instrumented-test.db"
 
     @Before
     fun setUp() {
@@ -30,7 +30,7 @@ class LmaaDatabaseMigrationInstrumentedTest {
     }
 
     @Test
-    fun migration1To2_addsPersistentAnalysisJobsWithoutChangingHistory() {
+    fun migration1To3_addsJobsStylesAndUsageWithoutChangingHistory() {
         createVersion1Database().use { helper ->
             helper.writableDatabase.execSQL(
                 """
@@ -49,7 +49,7 @@ class LmaaDatabaseMigrationInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, LmaaDatabase::class.java, databaseName)
-            .addMigrations(LmaaDatabase.MIGRATION_1_2)
+            .addMigrations(LmaaDatabase.MIGRATION_1_2, LmaaDatabase.MIGRATION_2_3)
             .build()
         try {
             val database = migrated.openHelper.writableDatabase
@@ -58,6 +58,19 @@ class LmaaDatabaseMigrationInstrumentedTest {
                 assertEquals(1, cursor.getInt(0))
             }
             database.query("SELECT COUNT(*) FROM analysis_jobs").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            database.query(
+                "SELECT name, outputLanguage, isActive, isBuiltIn FROM briefing_styles",
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("Standard", cursor.getString(0))
+                assertEquals("Deutsch", cursor.getString(1))
+                assertEquals(1, cursor.getInt(2))
+                assertEquals(1, cursor.getInt(3))
+            }
+            database.query("SELECT COUNT(*) FROM provider_usage").use { cursor ->
                 cursor.moveToFirst()
                 assertEquals(0, cursor.getInt(0))
             }

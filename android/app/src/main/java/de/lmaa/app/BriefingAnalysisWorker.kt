@@ -20,6 +20,7 @@ import de.lmaa.app.history.AnalysisJobRepository
 import de.lmaa.app.history.AnalysisJobStatus
 import de.lmaa.app.history.BriefingHistoryRepository
 import de.lmaa.app.history.LmaaDatabase
+import de.lmaa.app.history.ProviderUsageRepository
 import de.lmaa.app.secrets.ProviderSecretStore
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -59,18 +60,50 @@ internal class BriefingAnalysisWorker(
                 jobs.markFailed(jobId, "SECRET_STORE_ERROR")
                 return Result.success()
             }
-            if (!store.status.first().hasOpenAiKey) {
+            val providerStatus = store.status.first()
+            if (!providerStatus.hasOpenAiKey) {
                 jobs.markFailed(jobId, "OPENAI_KEY_MISSING")
                 return Result.success()
             }
 
+            val usageRepository = ProviderUsageRepository(database.providerUsageDao())
+            val rapidApiProvider = if (providerStatus.hasRapidApiKey) {
+                object : TranscriptProvider {
+                    override suspend fun fetch(
+                        videoId: String,
+                        preferredLanguages: List<String>,
+                    ): TranscriptFetchResult = store.useRapidApiKey { apiKey ->
+                        RapidApiTranscriptProvider(
+                            apiKey = apiKey,
+                            onRequestFinished = usageRepository::recordRapidApiAttempt,
+                        ).fetch(videoId, preferredLanguages)
+                    }
+                }
+            } else {
+                null
+            }
+            val transcriptResolver = TranscriptFallbackResolver(
+                primary = LocalTranscriptProvider(applicationContext),
+                fallback = rapidApiProvider,
+            )
+            val configuredTranscriptProvider = object : TranscriptProvider {
+                override suspend fun fetch(
+                    videoId: String,
+                    preferredLanguages: List<String>,
+                ): TranscriptFetchResult = transcriptResolver.fetch(
+                    videoId = videoId,
+                    preferredLanguages = preferredLanguages,
+                    fallbackEnabled = providerStatus.rapidApiEnabled,
+                )
+            }
+
             val pipeline = BriefingPipeline(
-                transcriptProvider = LocalTranscriptProvider(applicationContext),
+                transcriptProvider = configuredTranscriptProvider,
                 metadataProvider = YoutubeOEmbedMetadataProvider(),
                 briefingCreator = BriefingService(OpenAiBriefingTextGenerator(store)),
             )
             return when (
-                val result = pipeline.analyze(job.canonicalUrl) { stage ->
+                val result = pipeline.analyze(job.canonicalUrl, job.style) { stage ->
                     setForeground(foregroundInfo(jobId, stage))
                     check(jobs.markRunning(jobId, stage)) { "Analyseauftrag wurde abgebrochen" }
                 }

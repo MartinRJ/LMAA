@@ -231,7 +231,7 @@ private enum class KeyOperationState {
 }
 
 @Composable
-private fun ProtectSecretInputFromScreenshots(enabled: Boolean) {
+internal fun ProtectSecretInputFromScreenshots(enabled: Boolean) {
     val view = LocalView.current
     DisposableEffect(view, enabled) {
         val window = (view.context as? Activity)?.window

@@ -2,6 +2,7 @@ package de.lmaa.app
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -14,6 +15,7 @@ internal class RapidApiTranscriptProvider(
     private val apiKey: String,
     private val client: OkHttpClient = ProviderHttpClient.shared,
     private val endpoint: HttpUrl = DEFAULT_ENDPOINT,
+    private val onRequestFinished: suspend (success: Boolean, status: String) -> Unit = { _, _ -> },
 ) : TranscriptProvider {
     override suspend fun fetch(
         videoId: String,
@@ -40,25 +42,40 @@ internal class RapidApiTranscriptProvider(
             .get()
             .build()
 
-        try {
+        val result = try {
             client.newCall(request).execute().use { response ->
                 if (response.code == 429) {
-                    return@withContext TranscriptFetchResult.Failure("RAPIDAPI_QUOTA_EXCEEDED")
-                }
-                if (!response.isSuccessful) {
-                    return@withContext TranscriptFetchResult.Failure(
+                    TranscriptFetchResult.Failure("RAPIDAPI_QUOTA_EXCEEDED")
+                } else if (!response.isSuccessful) {
+                    TranscriptFetchResult.Failure(
                         "RAPIDAPI_HTTP_${response.code}",
                     )
+                } else {
+                    decode(videoId, language, JSONObject(response.body.string()))
                 }
-                decode(videoId, language, JSONObject(response.body.string()))
             }
         } catch (exception: CancellationException) {
+            withContext(NonCancellable) {
+                try {
+                    onRequestFinished(false, "CANCELLED")
+                } catch (_: Exception) {
+                    // Cancellation must remain cancellation even if local accounting fails.
+                }
+            }
             throw exception
         } catch (_: JSONException) {
             TranscriptFetchResult.Failure("RAPIDAPI_MALFORMED_RESPONSE")
         } catch (_: Exception) {
             TranscriptFetchResult.Failure("RAPIDAPI_NETWORK_ERROR")
         }
+        onRequestFinished(
+            result is TranscriptFetchResult.Success,
+            when (result) {
+                is TranscriptFetchResult.Success -> "SUCCESS"
+                is TranscriptFetchResult.Failure -> result.code
+            },
+        )
+        result
     }
 
     private fun decode(

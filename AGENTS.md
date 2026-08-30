@@ -41,8 +41,9 @@ Server-, Cloud- oder Pro-Ausbaustufen dürfen diesen Pfad nicht verdrängen.
    Fallback nach geeigneten technischen Fehlern des lokalen Primärproviders.
    Tests verwenden MockWebServer; reale Aufrufe nur bei diagnostischem Bedarf.
 9. Jede RapidAPI-Anfrage wird lokal technisch gezählt. Aktueller
-   Entwicklungsstand: 3 Versuche/3 Erfolge von nominal 100 Monatsrequests,
-   konservativ 97 verbleibend; das Dashboard ist maßgeblich.
+   Entwicklungsstand: 3 Versuche/3 Erfolge. Die App kennt den Tarif nicht;
+   `/100` und der daraus berechnete Restwert sind ausschließlich als
+   Basic-Tarif-Hinweis zu kennzeichnen, das Dashboard ist maßgeblich.
 10. Der Code unter `backend/` ist ein Referenz- und Testprototyp. Er darf
     Providersemantik und Prompts belegen, ist aber weder Produktlaufzeit noch
     Nachweis für lokale Android-Anforderungen.
@@ -100,8 +101,8 @@ Keine geschätzten Prozentwerte verwenden.
 | M0 – Lokale Laufzeit und Spikes | erledigt | 2026-08-30 | Vollständiger Android-Pfad, BYOK, oEmbed/OpenAI, kurzer/langer/Short-Gerätesmoke und Android-RapidAPI-Mockvertrag sind verifiziert. |
 | M1 – Persistenter Happy Path | erledigt | 2026-08-30 | Ein-Schritt-Pipeline, Room-Historie, eigener Detail-View und Kaltstart-/Offline-Smoke sind erfüllt. |
 | M2 – Share und Export | erledigt | 2026-08-30 | `ACTION_SEND`, Copy/Share, persistente WorkManager-Wiederaufnahme sowie Hoch-/Querformat, Dark Mode und 150-%-Schriftgröße sind auf Android 13 verifiziert. |
-| M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Als Nächstes eigene Settings-View statt Keyverwaltung im Home-View; danach Stil-CRUD, RapidAPI-Opt-in und Zähler. |
-| M4 – Härtung und APK | offen | 2026-08-29 | Fehlermatrix, Secret-Scan, Signing und Gerätesmokes. |
+| M3 – Stile und Fallback-Einstellungen | erledigt | 2026-08-30 | Settings, Stil-CRUD/-Snapshots, RapidAPI-BYOK/Opt-in/Zähler, Duplikathinweis und Briefing-Löschung sind auf Android 13 verifiziert. |
+| M4 – Härtung und APK | offen | 2026-08-30 | Als Nächstes Fehlermatrix, Secret-Scan, Release-Signing und repräsentative Gerätesmokes. |
 
 ## Früh zu validierende Annahmen
 
@@ -344,6 +345,46 @@ Android-Produktarchitektur.
   abgebrochen und storniert danach WorkManager. Systemunterbrechungen bleiben
   dagegen wiederanlauffähig.
 - RapidAPI: kein Live-Aufruf; Entwicklungsstand unverändert 3/100.
+
+### 2026-08-30 – M3 Settings, Stile und Historienpflege abgeschlossen
+
+- Milestone/Scope: M3, FAL-001, SEC-001, DAT-001, UX-002, HIS-001,
+  STY-001 und EXP-001.
+- Umgesetzt: Eigene Settings-Ansicht statt Keyeingabe auf Home; OpenAI- und
+  RapidAPI-BYOK über denselben DataStore/Tink/Keystore-Store; RapidAPI-Opt-in,
+  atomisches Deaktivieren beim Key-Löschen und lokaler Monatszähler mit
+  Warnschwellen. Nur `/100` ist hellgrauer Basic-Tarif-Hinweis. Stil-CRUD mit
+  geschütztem Standard, genau einem aktiven Stil sowie unveränderlichen Job- und
+  Briefing-Snapshots. Neuerstellung aus dem Detail erzeugt einen neuen Datensatz.
+  Vor sonstiger erneuter Analyse zeigt ein Dialog das neueste Briefing derselben
+  kanonischen URL antippbar an. Historieneinträge unterstützen Links-Swipe mit
+  freigelegter Löschaktion; Detail-Löschung verlangt „Löschen?“. Copy und Share
+  enthalten Titel, Kanal, kanonische URL und Markdown.
+- Verifiziert mit: Gradle `--offline testDebugUnitTest assembleDebug
+  assembleDebugAndroidTest lintDebug` (100 Tasks, erfolgreich) sowie gezielter
+  Android-Instrumentierung für Migration 1→3, Historie/Löschung, Job-Reopen,
+  Stil-CRUD/-Schutz, Providerzähler und beide verschlüsselten BYOK-Felder
+  (10 Tests, alle bestanden).
+- Manuell geprüft auf: Galaxy Tab S7+ 5G, Android 13. `adb install -r` erhielt
+  `****` und fünf bestehende Briefings. Duplikatdialog wählte aus mehreren
+  Treffern das neueste Briefing; dessen Link öffnete den Detail-View.
+  Löschen-Dialog wurde zunächst abgebrochen. Visueller Regressionstest fand und
+  behob dauerhaft sichtbare Swipe-Hintergrundaktionen; final legt nur der
+  tatsächlich nach links geschobene Eintrag „Löschen“ frei. Ein synthetischer
+  `M3-Test`-Stil wurde angelegt, aktiviert und in einem realen Briefing mit
+  Kotlin-Codeblock gesnapshottet. Das erzeugte Briefing wurde bestätigt gelöscht,
+  danach `Standard` aktiviert und der Teststil gelöscht; Endzustand: fünf
+  ursprüngliche Briefings, aktiver Standard, gespeicherter OpenAI-Key maskiert.
+- Offen/Blocker: keine für M3. M4 übernimmt Release-Signing, isolierte
+  Test-Application-ID, Accessibility-/Gesture-Regression, Fehlermatrix und
+  repräsentative Ende-zu-Ende-Smokes.
+- Sicherheits-/Kostenprüfung: Kein Keywert gelesen, geloggt, gescreenshottet
+  oder aus lokalen Keydateien übernommen. RapidAPI wurde nicht live aufgerufen;
+  lokaler Stand unverändert 3 Versuche/3 Erfolge. Der reale M3-Lauf verwendete
+  ausschließlich den in der App gespeicherten OpenAI-BYOK.
+- Relevante Entscheidung: Das RapidAPI-Kontingent ist unbekannt; `/100` ist
+  visuell untergeordnet und gilt nur bedingt für Basic. Explizite Neuerstellung
+  aus einem geöffneten Briefing benötigt keine redundante Duplikatbestätigung.
 
 ## Vorlage für Fortschrittseinträge
 

@@ -60,6 +60,38 @@ class ProviderSecretStore private constructor(
         return block(apiKey)
     }
 
+    suspend fun saveRapidApiKey(apiKey: String) {
+        val normalized = apiKey.trim()
+        require(normalized.isNotEmpty()) { "RapidAPI-Key darf nicht leer sein" }
+        dataStore.updateData { current ->
+            current.toBuilder().setRapidapiKey(normalized).build()
+        }
+    }
+
+    suspend fun clearRapidApiKey() {
+        dataStore.updateData { current ->
+            current.toBuilder()
+                .clearRapidapiKey()
+                .setRapidapiEnabled(false)
+                .build()
+        }
+    }
+
+    suspend fun setRapidApiEnabled(enabled: Boolean) {
+        dataStore.updateData { current ->
+            check(!enabled || current.rapidapiKey.isNotEmpty()) {
+                "RapidAPI kann ohne Key nicht aktiviert werden"
+            }
+            current.toBuilder().setRapidapiEnabled(enabled).build()
+        }
+    }
+
+    suspend fun <T> useRapidApiKey(block: suspend (String) -> T): T {
+        val apiKey = dataStore.data.first().rapidapiKey
+        check(apiKey.isNotEmpty()) { "Kein RapidAPI-Key gespeichert" }
+        return block(apiKey)
+    }
+
     internal fun deleteTestMaterial() {
         keysetRepository.deleteForTest()
     }

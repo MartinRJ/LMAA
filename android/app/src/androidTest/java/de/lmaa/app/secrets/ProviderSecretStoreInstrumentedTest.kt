@@ -26,15 +26,26 @@ class ProviderSecretStoreInstrumentedTest {
             dataStoreFileName = dataStoreFileName,
         )
         val syntheticKey = "sk-test-only-not-a-real-key"
+        val syntheticRapidApiKey = "rapidapi-test-only-not-a-real-key"
 
         try {
             assertFalse(store.status.first().hasOpenAiKey)
             store.saveOpenAiKey(syntheticKey)
             assertTrue(store.status.first().hasOpenAiKey)
             assertEquals(syntheticKey, store.useOpenAiKey { it })
+            store.saveRapidApiKey(syntheticRapidApiKey)
+            store.setRapidApiEnabled(true)
+            assertTrue(store.status.first().hasRapidApiKey)
+            assertTrue(store.status.first().rapidApiEnabled)
+            assertEquals(syntheticRapidApiKey, store.useRapidApiKey { it })
 
             val persisted = File(context.noBackupFilesDir, dataStoreFileName).readBytes()
             assertFalse(persisted.toString(Charsets.UTF_8).contains(syntheticKey))
+            assertFalse(persisted.toString(Charsets.UTF_8).contains(syntheticRapidApiKey))
+
+            store.clearRapidApiKey()
+            assertFalse(store.status.first().hasRapidApiKey)
+            assertFalse(store.status.first().rapidApiEnabled)
 
             store.clearOpenAiKey()
             assertFalse(store.status.first().hasOpenAiKey)
