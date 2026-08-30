@@ -1,260 +1,365 @@
 # Local Media Analysis Assistant (LMAA)
 
-Android-Anwendung zum Entgegennehmen von YouTube-Links, Ermitteln von Transkript und Metadaten und Erstellen dauerhaft gespeicherter, als Markdown dargestellter Video-Briefings mit der OpenAI API.
+LMAA ist eine persönliche Android-App für YouTube-Briefings auf einem Samsung
+Galaxy Tab S7+ 5G mit Android 13 / One UI 5.1.1.
 
-> **Das Ziel sei:** So schnell wie möglich einen auf einem Samsung Galaxy Tab S7+ 5G mit Android 13 / One UI 5.1.1 funktionierenden MVP bereitzustellen, der YouTube-Links sowohl über das Android-Teilen-Menü als auch per Direkteingabe annimmt, daraus mit `youtube-transcript-api` und `gpt-5.6-sol` ein konfigurierbares Briefing erzeugt, die Ergebnisse lokal historisiert und Markdown per Teilen oder Zwischenablage exportiert.
+> **Das Ziel sei:** So schnell wie möglich einen auf dem Zieltablet eigenständig
+> funktionierenden MVP bereitzustellen, der YouTube-Links über das Android-
+> Teilen-Menü oder per Direkteingabe annimmt, das Transkript primär **lokal in der
+> App** mit `youtube-transcript-api` abruft, daraus mit `gpt-5.6-sol` ein
+> konfigurierbares Briefing erzeugt, Ergebnisse lokal historisiert und Markdown
+> teilen oder kopieren kann.
+
+## Verbindliche Laufzeitgrenze
+
+„Lokal“ bedeutet für LMAA:
+
+- Die App benötigt keinen eigenen Server, keinen PC im LAN, keine Domain und
+  keinen Hosting-Dienst.
+- URL-Verarbeitung, Transcript-Provider-Auswahl, Chunking, Promptaufbau,
+  Fehlerbehandlung und Persistenz laufen auf dem Tablet.
+- `youtube-transcript-api` wird mit Chaquopy in die APK eingebettet.
+- Die App kommuniziert direkt per HTTPS mit YouTube/oEmbed, OpenAI und nur bei
+  aktiviertem Fallback mit RapidAPI.
+- OpenAI-Inferenz ist naturgemäß nicht offline oder lokal. Bereits gespeicherte
+  Briefings bleiben offline lesbar, kopierbar und teilbar.
+
+Ein FastAPI-Dienst ist **kein Bestandteil der Produktarchitektur**. Der vorhandene
+Code unter `backend/` ist ausschließlich ein Referenz- und Testprototyp für
+Providerverhalten, Prompts und synthetische Contract-Tests.
+
+## Aktueller Stand und Architekturkorrektur
+
+Am 2026-08-30 wurde festgestellt, dass der ursprüngliche Plan „lokal“ nur auf
+Room-Historie bezog und die Analyse fälschlich in ein FastAPI-Backend verlagerte.
+Diese Entscheidung ist aufgehoben.
+
+Bereits verifiziert:
+
+- Android-Gerüst mit Compose/Material 3, minSdk 26, compile/targetSdk 36.
+- Strikte YouTube-URL-Validierung und kanonische Video-URL.
+- Sicherer nativer Markdown-Renderer; Codeblöcke horizontal und lange Briefings
+  vertikal auf dem Zieltablet scrollbar.
+- Schlüsselloser oEmbed-Metadatenpfad als Referenz.
+- Modellzugriff auf exakt `gpt-5.6-sol` und Map-Reduce-Promptlogik im
+  Desktop-Referenzprototyp.
+- RapidAPI-Testzähler: 3 von 100 Requests, konservativ 97 verbleibend.
+
+Noch nicht verifiziert und damit M0-blockierend:
+
+- Chaquopy und `youtube-transcript-api==1.2.4` in der APK.
+- Ein realer Primärtranskriptabruf direkt vom Zieltablet.
+- Direkter OpenAI-Responses-Aufruf aus der Android-App.
+- BYOK-Eingabe und verschlüsselte Speicherung der Provider-Keys über Proto
+  DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset.
+- Vollständiger App-Pfad ohne Zugriff auf einen LMAA-eigenen Server.
+
+Die detaillierte Anforderungsprüfung und Nachweismatrix steht in
+[`docs/anforderungs-vv.md`](docs/anforderungs-vv.md).
 
 ## 1. MVP-Umfang
 
-### Muss-Funktionen
+### Link erfassen
 
-1. **Link erfassen**
-   - Empfang von `Intent.ACTION_SEND` mit `text/plain` aus der YouTube-App.
-   - Direkteingabe bzw. Einfügen eines Links in der App.
-   - Normalisierung von `youtube.com/watch?v=…`, `youtu.be/…`, `/shorts/…` und `/live/…`; Whitelist der YouTube-Hosts und strikte Video-ID-Validierung.
-   - Vor dem Start Vorschau der erkannten URL und Möglichkeit zum Abbrechen.
-2. **Daten beschaffen**
-   - Transkript über [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api), bevorzugt in Deutsch, danach Originalsprache bzw. automatisch erzeugte Untertitel.
-   - Optionaler Transkript-Fallback über die RapidAPI-API [`youtube-transcripts`](https://rapidapi.com/8v2FWW4H6AmKw89/api/youtube-transcripts). Er darf nur ausgeführt werden, wenn der Nutzer ihn in den App-Einstellungen ausdrücklich aktiviert und dort ein nichtleerer RapidAPI-Key hinterlegt ist. Primär bleibt immer `youtube-transcript-api`.
-   - Der Fallback greift nur nach einem als technisch wiederholbar klassifizierten Fehler des Primärproviders (beispielsweise `RequestBlocked`, `IpBlocked` oder temporärer Abruffehler), nicht bei ungültigen URLs, privaten/gelöschten Videos oder bewusst abgebrochenen Requests. Jede Nutzung wird vor dem Request auf der Oberfläche kenntlich gemacht.
-   - Video- und Kanalmetadaten separat über YouTube Data API v3 (`videos.list` mit `snippet,contentDetails,statistics`; optional `channels.list`).
-   - Mindestens speichern: Video-ID, Titel, Kanal-ID/-name, Veröffentlichungsdatum, Dauer, Thumbnail-URL, Quell-URL, Transkriptsprache, Untertitelart und Abrufzeitpunkt. Statistiken sind optional und als zeitabhängiger Snapshot zu kennzeichnen.
-   - Verständliche Fehlerzustände für kein Transkript, privates/gelöschtes/altersbeschränktes Video, ungültige URL, Rate Limit, Netzwerk- und Providerfehler; erneuter Versuch möglich.
-3. **Briefing erzeugen**
-   - Serverseitiger Aufruf der OpenAI Responses API mit dem Modellnamen **`gpt-5.6-sol`**.
-   - Ergebnis ist Markdown. Der Prompt verlangt belegtreue Zusammenfassung ohne erfundene Aussagen und eine klare Kennzeichnung fehlender Informationen.
-   - Lange Transkripte werden deterministisch nach Zeichen-/Tokenbudget segmentiert, segmentweise verdichtet und abschließend zusammengeführt (Map-Reduce); Segmentreihenfolge und Zeitbezüge bleiben erhalten.
-4. **Briefing-Stile verwalten**
-   - Stile anlegen, bearbeiten, löschen und genau einen aktiven Stil wählen.
-   - Ein Stil enthält Name, Prompt/Anweisungen, optionale Ausgabesprache und Änderungszeitpunkt.
-   - Ein mitgelieferter, nicht versehentlich löschbarer Standardstil stellt sicher, dass stets ein aktiver Stil existiert.
-   - „Mit anderem Stil neu erstellen“ erzeugt **einen neuen Briefing-Datensatz** und überschreibt weder das ursprüngliche Briefing noch dessen Stil-Snapshot.
-5. **Lesen und verwalten**
-   - Startansicht mit chronologisch absteigender Liste bisheriger Briefings, Status, Videotitel, Kanal, Stil und Erstellzeit.
-   - Detailansicht rendert übliches ChatGPT-Markdown (Überschriften, Listen, Hervorhebung, Links, Zitate, Inline-Code und Codeblöcke).
-   - Jedes Briefing zeigt in der Detailansicht einen eindeutig beschrifteten Button bzw. Link „Video auf YouTube öffnen“. Er öffnet die kanonische Quell-URL des zugehörigen Videos über einen Android-Intent bevorzugt in der YouTube-App und ansonsten im Browser.
-   - Volltext des Markdown-Ergebnisses über Android Sharesheet als `text/plain` teilen und über einen expliziten Button in die Zwischenablage kopieren.
-   - Lade-, Leer- und Fehlerzustände sowie Wiederholen ohne Datenverlust.
+- `Intent.ACTION_SEND` mit `text/plain` aus der YouTube-App empfangen.
+- Link direkt eingeben oder einfügen.
+- `youtube.com/watch?v=…`, `youtu.be/…`, `/shorts/…` und `/live/…`
+  normalisieren.
+- Nur bekannte YouTube-Hosts und eine exakt validierte elfstellige Video-ID
+  akzeptieren.
+- Externe Video-Intents ausschließlich aus der validierten ID als kanonische
+  HTTPS-URL konstruieren.
 
-### Bewusst nicht im ersten MVP
+### Transkript lokal abrufen
 
-- Login, Synchronisation zwischen Geräten, kollaborative Bibliothek, Audio-Transkription für Videos ohne Captions, Playlist-/Kanal-Batchverarbeitung und Play-Store-Veröffentlichung.
-- Offline-Erzeugung. Bereits gespeicherte Briefings müssen jedoch offline lesbar, kopierbar und teilbar sein.
+- `youtube-transcript-api==1.2.4` über Chaquopy 17.0 in der Android-App
+  ausführen.
+- Zuerst manuelle deutsche Untertitel wählen, danach geeignete Originalsprache
+  und automatisch erzeugte Untertitel.
+- Segmente mit Text, Startzeit und Dauer in ein Kotlin-internes Modell
+  normalisieren.
+- Keine YouTube-Data-API und keinen API-Key für den Primärtranskriptpfad
+  voraussetzen.
+- Fehler für fehlende Captions, private/gelöschte Videos, IP-Sperren,
+  Netzwerkfehler und Parseränderungen unterscheidbar darstellen.
 
-## 2. Technische Entscheidung
+`youtube-transcript-api` verwendet einen undokumentierten YouTube-Webclient-
+Zugriff. Er kann durch YouTube-Änderungen ausfallen. Mobilfunk-/Privatanschlüsse
+sind weniger typisch für Rechenzentrums-IP-Sperren, ein Erfolg ist trotzdem nur
+durch Tests auf dem Zielgerät belegt.
 
-### Architektur
+### RapidAPI ausschließlich als Fallback
+
+- Standardmäßig deaktiviert.
+- Nur nach einem geeigneten technischen Fehler des lokalen Primärproviders,
+  niemals parallel und niemals vorsorglich.
+- Kein Fallback bei ungültiger URL, bewusstem Abbruch, privatem/gelöschtem Video
+  oder eindeutig nicht vorhandenem Transkript.
+- Direkter HTTPS-Aufruf vom Tablet an den fest konfigurierten RapidAPI-Host.
+- Nutzer-Key als BYOK maskiert eingeben, als Tink-AEAD-Ciphertext in Proto
+  DataStore speichern, löschen und ersetzen können. Das Tink-Keyset wird über
+  Android Keystore geschützt. Nach dem Speichern zeigt die UI nur die konstante
+  Maske `****`, niemals Klartext, Präfix oder tatsächliche Länge.
+- Jeden Versuch lokal mit Monat, Ergebnis und technischem Fehlercode zählen,
+  aber niemals Key, URL oder Transkript loggen.
+- Der lokale Zähler warnt rechtzeitig vor dem persönlichen Basic/Free-Limit von
+  100 Requests; maßgeblich bleibt das RapidAPI-Dashboard.
+
+Weitere Live-Aufrufe erfolgen in M0 nur, wenn ein Fallbackfehler auf dem Tablet
+ohne realen Provider nicht diagnostizierbar ist. Tests verwenden ansonsten
+synthetische Fixtures und einen Mock-Webserver.
+
+### Metadaten
+
+- YouTube oEmbed direkt aus der App und ohne API-Key aufrufen.
+- Nur Titel, Kanalname und HTTPS-Thumbnail übernehmen; Embed-HTML ignorieren.
+- Kanal-ID, Veröffentlichungsdatum und Dauer bleiben im MVP nullable.
+- Der vorhandene Data-API-v3-Prototyp ist nicht aktiv und kein MVP-Bestandteil.
+
+### Briefing erzeugen
+
+- OpenAI Responses API direkt aus der Android-App aufrufen.
+- Modellname exakt `gpt-5.6-sol`; kein stiller Fallback.
+- `store=false`, keine Modell-Tools und klar abgegrenzte unvertrauenswürdige
+  Metadaten-/Transkriptbereiche verwenden.
+- Lange Transkripte deterministisch segmentieren und per Map-Reduce
+  zusammenführen; Reihenfolge und Zeitbezüge erhalten.
+- Ausgabe als Markdown mit mindestens:
+
+  ```markdown
+  # Kernaussage
+  ## Kurzfassung
+  ## Wichtigste Punkte
+  ## Argumentation und Belege
+  ## Genannte Personen, Organisationen und Quellen
+  ## Offene Fragen / Unsicherheiten
+  ## Kapitel mit Zeitmarken
+  ```
+
+### Historie, Stile und Export
+
+- Room ist die lokale Source of Truth für Videos, Transkripte, Briefings und
+  Stile.
+- Alte Briefings bleiben unveränderliche Snapshots von Stilname, Stiltext und
+  Modell.
+- Neuerstellung mit anderem Stil erzeugt immer einen neuen Briefing-Datensatz.
+- Detailansicht rendert Überschriften, Listen, Hervorhebung, Links, Zitate,
+  Inline-Code und Codeblöcke ohne HTML-Ausführung.
+- Jedes Briefing bietet „Video auf YouTube öffnen“, Kopieren und Teilen als
+  `text/plain`.
+
+### Nicht im ersten MVP
+
+- Eigener Backend-Dienst oder Cloud-Hosting.
+- Login, Synchronisation, Mehrgerätebetrieb und kollaborative Bibliothek.
+- Audio-Transkription für Videos ohne Captions.
+- Playlist-/Kanal-Batches, Play-Store-Veröffentlichung und Offline-KI-Inferenz.
+
+## 2. Zielarchitektur
 
 ```text
 YouTube-App / Direkteingabe
            │ ACTION_SEND oder URL
            ▼
-Android-App (Kotlin, Jetpack Compose, minSdk 26, targetSdk aktuell)
-  UI → ViewModel → Repository → Room (lokale Source of Truth)
-                         │ HTTPS + installierte App-Client-ID
-                         ▼
-Backend (Python, FastAPI)
-  URL/Video-ID validieren
-  ├─ youtube-transcript-api → Captions
-  ├─ YouTube Data API v3   → Video-/Kanalmetadaten
-  └─ OpenAI Responses API  → Markdown-Briefing
+Android-App
+  Compose UI → ViewModel → Repository → Room
+                         │
+                         ├─ Chaquopy/Python
+                         │    └─ youtube-transcript-api → Primärtranskript
+                         │
+                         ├─ Kotlin-HTTPS → YouTube oEmbed → Metadaten
+                         ├─ Kotlin-HTTPS → OpenAI Responses → Markdown
+                         └─ Kotlin-HTTPS → RapidAPI → optionaler Fallback
 ```
 
-`youtube-transcript-api` ist eine Python-Bibliothek und keine Android/Kotlin-Bibliothek. Sie in die APK einzubetten würde Python-Runtime, Wartung und Netzwerkverhalten unnötig verkomplizieren. Ein kleines Python-Backend liefert den schnellsten robusten MVP und hält OpenAI- und YouTube-Schlüssel aus der APK. **Produktionsschlüssel dürfen niemals in App, Ressourcen, BuildConfig oder Repository liegen.**
+### Android und eingebettetes Python
 
-Für einen persönlichen MVP kann das Backend zunächst auf einem kleinen HTTPS-Dienst laufen. Direkter Internetzugriff des Backends auf YouTube kann blockiert werden; die Bibliothek dokumentiert insbesondere IP-Sperren bei Cloud-Anbietern und Proxy-Unterstützung. Das Deployment muss daher mit realen Zielvideos getestet werden. Proxies sind nur eine Betriebsoption, kein Bestandteil des ersten Happy Paths.
+- Kotlin, Jetpack Compose/Material 3, Coroutines und Room.
+- Chaquopy 17.0.0, Python 3.10 und ausschließlich die für das Zielgerät
+  erforderliche ABI `arm64-v8a` zunächst im persönlichen Build.
+- Python-Quellen unter `android/app/src/main/python`; eine schmale Bridge gibt
+  ausschließlich normalisierte DTOs oder kontrollierte Fehlercodes an Kotlin
+  zurück.
+- Python-/Netzwerkzugriffe nie auf dem Main Thread ausführen.
+- Chaquopy- und Paketinitialisierung, APK-Größe, Kaltstart und Speicherverbrauch
+  auf dem Galaxy Tab messen.
+- WorkManager nur für fortsetzbare Aufträge einsetzen; Room speichert den
+  Auftragszustand vor externen Requests.
 
-### Android
+Chaquopy 17 unterstützt laut Hersteller AGP 7.3–9.2, Python 3.10–3.14 und
+minSdk 24. Das passt formal zu AGP 9.2.1, Python 3.10, minSdk 26 und dem
+ARM64-Zielgerät. Diese Kompatibilität ist **validiert**, aber erst nach einem
+erfolgreichen APK-Build und Live-Abruf auf dem Tablet **verifiziert**.
 
-- Kotlin, Jetpack Compose + Material 3, Navigation Compose.
-- Room für `videos`, `briefings`, `styles` und optional `jobs`; DataStore nur für kleine App-Einstellungen.
-- Retrofit/OkHttp oder Ktor Client; WorkManager für fortsetzbare Erzeugungsjobs. Ein eindeutiger Idempotency-Key verhindert doppelte Jobs bei Retry.
-- Markdown-Renderer als austauschbarer Adapter. Auswahl im Spike anhand Android-13-Kompatibilität, CommonMark-Abdeckung, Linkbehandlung, Copy-Verhalten, Wartungsstand und Lizenz; kein unkontrolliertes WebView-HTML.
-- Adaptive Zwei-Spalten-Darstellung auf dem Tablet ist wünschenswert, aber der MVP darf zunächst eine robuste Single-Pane-Navigation verwenden.
-- `ACTION_SEND`-Intent-Filter ausschließlich für `text/plain`. Eingehenden Text nie ungeprüft als Netzwerkziel verwenden.
-- Der Video-Button verwendet ausschließlich die aus der validierten Video-ID neu konstruierte kanonische HTTPS-URL; keine ungeprüfte Eingabe oder Backend-URL an einen externen Intent weiterreichen. Ist keine passende App installiert, übernimmt der Browser über den normalen Android-Resolver.
+### Interne Provider-Schnittstellen
 
-### Backend und externe Dienste
+Es gibt keinen HTTP-Vertrag zwischen App und eigenem Backend. Austauschbare
+interne Adapter kapseln Provider:
 
-- Python-Version und Abhängigkeiten pinnen; FastAPI-Endpunkte mit Pydantic-Schemata.
-- `youtube-transcript-api` liefert Untertitel, aber keine vollständigen Video-/Kanaldaten. Dafür wird die offizielle YouTube Data API v3 genutzt. `videos.list` kostet laut API-Dokumentation typischerweise eine Quota-Einheit; Abrufe cachen und nur benötigte `part`s abfragen.
-- OpenAI-Aufruf ausschließlich im Backend. Standardmodell ist exakt `gpt-5.6-sol`; Modellname kommt serverseitig aus Konfiguration, damit ein Provider-Rollout ohne APK-Update korrigiert werden kann. Beim Startup/Healthcheck ist die Modellverfügbarkeit zu prüfen und ein nicht unterstütztes Modell klar zu melden, **nicht** stillschweigend auf ein anderes Modell zu wechseln.
-- Rohtranskripte werden für Reproduzierbarkeit zunächst lokal in Room gespeichert. Der Server arbeitet für den MVP zustandsarm und löscht Request-Inhalte nach Abschluss aus temporären Speichern; keine Inhalts-Logs.
-- Der optionale RapidAPI-Fallback ruft `GET https://youtube-transcripts.p.rapidapi.com/youtube/transcript` serverseitig mit `x-rapidapi-host: youtube-transcripts.p.rapidapi.com` und dem vom Client nur für diesen Auftrag gelieferten `x-rapidapi-key` auf. URL, validierte Video-ID, Sprache und begrenzte Chunk-Größe werden kontrolliert aufgebaut; Providerantworten werden in das interne Transkriptmodell normalisiert.
+```text
+TranscriptProvider.fetch(videoId, preferredLanguages)
+MetadataProvider.fetch(videoId)
+BriefingGenerator.generate(metadata, transcript, styleSnapshot)
+```
 
-### Einstellungen für den RapidAPI-Fallback
+Der Pipeline-Orchestrator ruft immer zuerst den lokalen TranscriptProvider auf.
+RapidAPI darf ausschließlich nach einem explizit klassifizierten technischen
+Fehler und aktivem Opt-in aufgerufen werden.
 
-- Schalter „RapidAPI-Fallback verwenden“, standardmäßig **aus**.
-- Passwortfeld „RapidAPI-Key“ mit maskierter Darstellung sowie Aktionen zum Speichern, Ersetzen und Löschen. Ein Key wird weder vorbefüllt noch in Beispielen oder Diagnoseausgaben angezeigt.
-- Aktivieren ist nur mit nichtleerem Key möglich. Löschen des Keys deaktiviert den Fallback atomar. Ein optionaler Verbindungstest zählt als API-Request und muss entsprechend beschriftet sein.
-- Ein Key gilt erst nach einer erfolgreichen Providerantwort als praktisch validiert. Antwortet RapidAPI mit `401` oder `403`, markiert die App die Konfiguration als ungültig, zeigt eine Handlungsanweisung und verwendet den Fallback bis zum Ersetzen bzw. erneuten Prüfen des Keys nicht mehr.
-- Der Key wird auf Android mit einem im Android Keystore geschützten Schlüssel verschlüsselt gespeichert und von Cloud-/ADB-Backups ausgeschlossen. Er gehört nicht in Room, DataStore-Klartext, `BuildConfig`, Ressourcen oder Telemetrie.
-- Für einen Analyseauftrag wird der Key ausschließlich über HTTPS in einem sensitiven Request-Header an das eigene Backend gesendet. Das Backend hält ihn nur im Arbeitsspeicher, redigiert den Header in sämtlichen Logs/Traces, persistiert oder cached ihn nicht und leitet ihn ausschließlich an den fest konfigurierten RapidAPI-Host weiter.
-- Die App zeigt einen lokalen Monatszähler erfolgreicher Fallback-Aufrufe und warnt vor dem dokumentierten Basic/Free-Limit von **100 Requests pro Monat**. Dieser Zähler ist nur eine Nutzungshilfe; maßgeblich sind Tarif und Abrechnung im RapidAPI-Dashboard. Bei `429` oder erschöpfter Quote erfolgt kein Retry-Sturm, sondern ein klarer Fehler mit Link zu den Einstellungen.
-- Ein vom Nutzer eingegebener Key ist als Secret zu behandeln. Der im Projekt bereitgestellte Beispielkey wird ausdrücklich **nicht** in Repository, Dokumentation, Tests oder App-Voreinstellungen übernommen und sollte wegen seiner Offenlegung widerrufen bzw. rotiert werden.
+## 3. BYOK und persönliches Bedrohungsmodell
 
-## 3. Vorgeschlagene Datenmodelle
+OpenAI weist ausdrücklich darauf hin, API-Keys nicht in Client-Apps
+offenzulegen. Die serverlose Anforderung und die offizielle Empfehlung stehen
+damit in einem Zielkonflikt.
+
+Für diesen ausschließlich persönlichen, sideloaded MVP gilt BYOK: Der einzige
+Nutzer trägt seinen eigenen projektgebundenen Provider-Key in der App ein. Dafür
+gilt folgende begrenzte Ausnahme:
+
+- Keys werden vom Nutzer zur Laufzeit eingegeben; niemals in APK, Git,
+  Ressourcen, `BuildConfig`, Fixtures oder Screenshots einbauen.
+- Nur mit Tink AEAD verschlüsselter Ciphertext wird in Proto DataStore
+  persistiert. Das Tink-Keyset wird mit einem nicht exportierbaren Schlüssel im
+  Android Keystore geschützt.
+- Nach erfolgreichem Speichern zeigt die App ausschließlich `****`. „Ersetzen“
+  öffnet ein leeres Passwortfeld; der vorhandene Key wird nie zurück in die UI
+  geladen. „Löschen“ entfernt den Eintrag und deaktiviert den jeweiligen Provider
+  atomar, soweit dieser optional ist.
+- Ciphertexte, Room-Daten und Einstellungen werden von Cloud- und
+  Device-to-Device-Backups ausgeschlossen.
+- Klartext existiert nur kurzzeitig im App-Prozess für den jeweiligen
+  Authorization-Header und wird nie geloggt oder persistiert.
+- Getrennte, projektgebundene Test-/Produktkeys mit minimalen Berechtigungen,
+  Rotation und hartem Spend-Limit verwenden.
+- Bei Geräteverlust, Root-Kompromittierung oder verdächtigem Verbrauch Keys
+  sofort widerrufen.
+
+Der Keystore reduziert Extraktionsrisiken, macht einen direkt von einer App
+verwendeten OpenAI-Key aber nicht gleichwertig zu einem serverseitigen Secret.
+Vor Verteilung an weitere Nutzer ist diese Ausnahme ungültig; dann wäre eine
+neue Architekturprüfung erforderlich.
+
+`EncryptedSharedPreferences` und `MasterKey` sind offiziell deprecated und
+deshalb ausdrücklich **nicht** die Zielarchitektur. Unverschlüsselte
+`SharedPreferences` sind ebenfalls unzulässig. Das offizielle AndroidX-Modul
+`datastore-tink` ist derzeit Alpha. M0 entscheidet daher nach Dependency- und
+Gerätetest, ob dieses Modul oder stabiles Proto DataStore mit einem eigenen
+Tink-AEAD-Serializer verwendet wird. In beiden Fällen gelten dieselben
+Invarianten: nur Ciphertext persistieren, Keyset über Android Keystore schützen,
+keinen Klartext loggen oder sichern und atomisches Ersetzen/Löschen ermöglichen.
+
+Die lokalen Dateien `OpenAI API KEY.txt` und
+`youtube-transcripts Key.txt` dienen ausschließlich expliziten
+Entwicklungs-Smokes, bleiben ignoriert und dürfen nie in die APK gelangen.
+
+## 4. Lokales Datenmodell
 
 | Entität | Wesentliche Felder |
 |---|---|
-| `Video` | `videoId` (PK), `canonicalUrl`, `title`, `channelId`, `channelTitle`, `publishedAt`, `durationIso8601`, `thumbnailUrl`, `metadataJson`, `fetchedAt` |
-| `Transcript` | `videoId` (FK), `provider` (`primary`/`rapidapi`), `languageCode`, `isGenerated`, `segmentsJson` (`text,start,duration`), `plainText`, `fetchedAt` |
-| `BriefingStyle` | `id` (UUID), `name`, `instructions`, `outputLanguage`, `isActive`, `isBuiltIn`, `createdAt`, `updatedAt` |
-| `Briefing` | `id` (UUID), `videoId` (FK), `styleId` (nullable FK), `styleNameSnapshot`, `styleInstructionsSnapshot`, `modelSnapshot`, `markdown`, `status`, `errorCode`, `createdAt`, `completedAt` |
+| `Video` | `videoId` (PK), `canonicalUrl`, `title`, `channelId?`, `channelTitle`, `publishedAt?`, `durationIso8601?`, `thumbnailUrl`, `fetchedAt` |
+| `Transcript` | `id`, `videoId` (FK), `provider` (`primary`/`rapidapi`), `languageCode`, `isGenerated`, `segmentsJson`, `plainText`, `fetchedAt` |
+| `BriefingStyle` | `id`, `name`, `instructions`, `outputLanguage`, `isActive`, `isBuiltIn`, Zeitstempel |
+| `Briefing` | `id`, `videoId` (FK), Stil-/Modell-Snapshots, `markdown`, `status`, `errorCode`, Zeitstempel |
+| `ProviderUsage` | `provider`, `month`, `attempts`, `successes`, letzter technischer Status |
 
-Indizes: `Briefing(createdAt)`, `Briefing(videoId)`, `Video(channelTitle)`. Room-Migrationen sind ab Schema-Version 1 durch Tests abzusichern. Löschen eines benutzerdefinierten Stils ist verboten, solange er aktiv ist; historische Briefings bleiben durch Snapshots lesbar.
+Room-Migrationen benötigen ab Schema-Version 1 einen Migrationstest. Weder
+Provider-Keys noch vollständige Providerantworten gehören in Room.
 
-## 4. API-Skizze für den MVP
+## 5. Milestones
 
-### `POST /v1/briefings`
+### M0 – Lokale Laufzeit und technische Spikes
 
-Request:
+- Android-Gerüst, CI-Workflow und Debug-APK.
+- Chaquopy 17/Python 3.10/`arm64-v8a` integrieren.
+- `youtube-transcript-api==1.2.4` in die APK installieren und über eine
+  Kotlin-Python-Bridge aufrufen.
+- Auf dem Zieltablet manuelle und automatisch erzeugte deutsche/englische
+  Untertitel sowie Short und langes Video primär lokal testen.
+- oEmbed und OpenAI Responses direkt aus Android anbinden.
+- BYOK-Eingabe mit Proto DataStore + Tink AEAD, Android-Keystore-geschütztem
+  Keyset, fester `****`-Maske und Backup-Ausschluss implementieren.
+- RapidAPI-Fallbackadapter mit MockWebServer verifizieren; keine weiteren
+  Live-Aufrufe ohne diagnostischen Bedarf.
+- Markdown-Renderer mit langem Code-/Scroll-Fixture prüfen.
 
-```json
-{
-  "url": "https://youtu.be/VIDEO_ID",
-  "style": {
-    "name": "Standard",
-    "instructions": "Erstelle ein sachliches Briefing …",
-    "output_language": "de"
-  },
-  "client_request_id": "UUID"
-}
-```
+**Abnahme:** Die App startet auf Android 13 und erzeugt für ein festes Testvideo
+ohne PC und ohne LMAA-Server ein Briefing aus einem lokal abgerufenen Transkript.
+Netzwerk- und Adaptertests belegen, dass RapidAPI bei erfolgreichem Primärpfad
+nicht aufgerufen wird. Kein Secret befindet sich in APK, Git oder Backup.
 
-Wenn der Fallback lokal aktiviert ist, sendet die App zusätzlich `X-LMAA-RapidAPI-Fallback: enabled` und den Key in `X-LMAA-RapidAPI-Key`. Beide Header sind sensitiv; der Key erscheint niemals im JSON-Körper, in Responses oder Logs. Ohne beide gültigen Header darf das Backend RapidAPI nicht aufrufen. Für die Implementierung ist zu prüfen, ob ein kurzlebiges, verschlüsseltes Secret-Envelope statt des direkten Headers den späteren Mehrnutzerbetrieb besser absichert.
+### M1 – Persistenter vertikaler Happy Path
 
-Response (synchron nur wenn schnell genug, sonst `202` + Polling):
+- Direkteingabe → lokales Transkript → oEmbed → OpenAI → Markdown-Detailansicht.
+- Room-Speicherung, Briefingliste, Lade-/Abbruch-/Fehlerzustand.
+- Video-Button mit kanonischer URL.
 
-```json
-{
-  "job_id": "UUID",
-  "status": "completed",
-  "video": {},
-  "transcript": {"language_code": "de", "is_generated": false, "segments": []},
-  "briefing": {"model": "gpt-5.6-sol", "markdown": "# …"}
-}
-```
+**Abnahme:** Nach App-Neustart bleibt das Briefing offline lesbar; ein weiteres
+Video kann ohne PC oder LMAA-Server verarbeitet werden.
 
-Ergänzend: `GET /v1/jobs/{id}`, `GET /healthz` und optional `DELETE /v1/jobs/{id}`. Stabiler Fehlerkörper: `code`, deutsche `message`, `retryable`, `details`. Keine internen Stacktraces an Clients. Request-Größenlimit, Timeouts, eingeschränkte CORS-Konfiguration, Authentisierung des persönlichen Clients und Rate Limiting sind vor öffentlichem Betrieb Pflicht.
+### M2 – Android-Integration und Export
 
-## 5. Standard-Briefingstil
+- `ACTION_SEND` aus YouTube.
+- Markdown teilen und kopieren.
+- Wiederaufnahme nach Activity-/Prozessneustart.
+- Tablet-Layout, Querformat, Dark Mode und große Schrift.
 
-Der initiale Systemstil soll mindestens folgende Struktur anfordern:
+### M3 – Stilverwaltung und Fallback-Einstellungen
 
-```markdown
-# Kernaussage
-## Kurzfassung
-## Wichtigste Punkte
-## Argumentation und Belege
-## Genannte Personen, Organisationen und Quellen
-## Offene Fragen / Unsicherheiten
-## Kapitel mit Zeitmarken
-```
+- Stil-CRUD, aktiver Stil, Default-Schutz und unveränderliche Snapshots.
+- Neuerstellung als separater historischer Eintrag.
+- RapidAPI-Opt-in, maskierter Key, Löschen, lokaler Monatszähler und Warnungen.
 
-Anweisung: ausschließlich auf Transkript und Metadaten stützen; Meinungen des Videos als solche attribuieren; keine nicht belegten Fakten ergänzen; Unverständliches und fehlende Quellen explizit markieren; konkrete Zeitmarken verlinkbar ausgeben. Der individuelle Stiltext wird als Anweisung behandelt, nicht als vertrauenswürdiger Inhalt. Transkript und Metadaten sind untrusted data und werden im Prompt eindeutig abgegrenzt, um Prompt Injection zu reduzieren.
+### M4 – Härtung und APK
 
-## 6. Milestones zum MVP
+- Fehlermatrix, Timeouts, Retrygrenzen, lange Transkripte und fünf
+  repräsentative Zielvideos.
+- Room-/Instrumentierungs-/Compose-Tests und Secret-Scan der APK.
+- Lokales Release-Signing und installierbare signierte APK.
 
-### M0 – Projektgerüst und technische Spikes (0,5–1 Tag)
+## 6. Teststrategie und V&V
 
-- Android-Projekt mit Compose, minSdk 26, CI-Build und Debug-APK anlegen.
-- FastAPI-Projekt, gepinnte Dependencies, `.env.example`, Secret-Ausschlüsse und Healthcheck anlegen.
-- Auf dem tatsächlichen Hosting je ein manuelles, automatisch erzeugtes, deutsches und englisches Transkript testen.
-- RapidAPI-Adapter ausschließlich mit Mock-Server/Fixtures implementieren; einen realen, vom Nutzer neu ausgestellten Key nur lokal für einen expliziten Smoke-Test verwenden.
-- Verfügbarkeit und Zugriff auf `gpt-5.6-sol` mit dem vorgesehenen OpenAI-Projekt prüfen.
-- Markdown-Renderer durch kleines Fixture mit allen geforderten Elementen festlegen.
+- **Validation:** Prüft, ob die Anforderung den persönlichen Stakeholderbedarf
+  trifft und frei von unaufgelösten Widersprüchen ist.
+- **Verification:** Prüft durch Tests und Artefakte, ob die Implementierung diese
+  Anforderung tatsächlich erfüllt.
+- Python-Unit-Tests laufen sowohl auf Desktop als auch, für Android-spezifische
+  Risiken, als Instrumentierungs-/Bridge-Tests auf dem Tablet.
+- Provideradapter verwenden synthetische Fixtures und MockWebServer.
+- Geräte-Smokes prüfen primäre Transcript-Arten, Shorts, lange Videos,
+  Mobilfunk/WLAN, Prozessneustart und Scrollverhalten.
+- Architekturtest stellt sicher, dass kein LMAA-eigener Host kontaktiert wird.
+- Fallback-Wahrheitstabelle prüft Opt-in, Key, zulässigen Primärfehler und exakt
+  einen RapidAPI-Aufruf.
+- APK-/Git-Scans suchen nach bekannten Key-Präfixen und lokalen Key-Dateinamen.
+- OpenAI-Evals prüfen Pflichtüberschriften, Stiltreue, Zeitmarken,
+  Halluzinationen und Map-Reduce-Konsistenz.
 
-**Abnahme:** App startet auf Android 13; Backend-Healthcheck grün; ein festes Testvideo liefert Transkript, Metadaten und Modellantwort. Unverfügbare Modell-ID ist als Blocker dokumentiert.
+## 7. Risiken
 
-### M1 – Vertikaler Happy Path (1–2 Tage)
+| Risiko | Gegenmaßnahme |
+|---|---|
+| YouTube ändert die undokumentierte Caption-Schnittstelle | Paket pinnen, Adapter kapseln, lokale Fixtures, kontrollierter Updatepfad, optionaler RapidAPI-Fallback |
+| Chaquopy/Paket funktioniert auf Android anders als auf Desktop | M0-Gerätespike zuerst; Python-/ABI-Version pinnen |
+| Python erhöht APK-Größe oder Startzeit | nur `arm64-v8a`, Lazy-Start messen, keine unnötigen Pakete |
+| OpenAI-Key wird aus der Client-App missbraucht | persönliches BYOK, Sideload-Grenze, DataStore/Tink + Android Keystore, Backup-Ausschluss, restriktiver Projektkey, hartes Spend-Limit, Rotation |
+| Offizielles `datastore-tink` ist Alpha | M0-Dependency-/Gerätespike; alternativ stabiles Proto DataStore mit eigenem Tink-AEAD-Serializer, identische Sicherheitsinvarianten |
+| RapidAPI-Quote erschöpft | primär lokaler Abruf, Opt-in, kein Retry bei 429, lokaler Zähler und Dashboardwarnung |
+| Sehr lange Transkripte | deterministisches Chunking, Map-Reduce, Abbruch/Wiederaufnahme |
+| Prompt Injection oder schädliches Markdown | Daten delimitieren, keine Modell-Tools, HTML nicht ausführen, Links strikt begrenzen |
+| Android beendet den Prozess | Auftrag und Zwischenstatus zuerst in Room persistieren, WorkManager nur bei Bedarf |
 
-- Direkte URL-Eingabe → API → Transkript/Metadaten → OpenAI → Markdown-Detailansicht.
-- Video-Button in der Detailansicht, der die kanonische YouTube-URL öffnet.
-- Room-Speicherung und Briefingliste.
-- Lade- und einfacher Fehlerzustand.
+## 8. Primärquellen
 
-**Abnahme:** Nach App-Neustart bleibt ein erzeugtes Briefing offline lesbar; sein Video-Button öffnet bei bestehender Verbindung das richtige YouTube-Video.
-
-### M2 – Android-Integration und Export (1 Tag)
-
-- `ACTION_SEND` aus YouTube, kanonische URL-Erkennung und Deduplizierungsdialog.
-- Markdown teilen und in Zwischenablage kopieren.
-- Tablet-Layout, Zurücknavigation und rotierende/neu erzeugte Activity testen.
-
-**Abnahme:** Ein Video wird auf dem Galaxy Tab aus YouTube an LMAA geteilt und das fertige Markdown anschließend an Telegram (oder einen Test-Share-Empfänger) übergeben.
-
-### M3 – Stilverwaltung und Neuerstellung (1–2 Tage)
-
-- CRUD-Oberfläche, aktiven Stil wählen, Default-Schutz und Validierung.
-- Neuerstellung mit anderem Stil; neuer historischer Eintrag mit vollständigem Snapshot.
-- Keine erneute Transkript-/Metadatenabfrage, sofern Cache frisch und vollständig ist.
-
-**Abnahme:** Zwei Stile erzeugen zwei getrennte Listeneinträge zum selben Video; Löschen/Ändern des Stils verändert alte Briefings nicht.
-
-Zusätzlich in M3: Integrationseinstellungen für den RapidAPI-Fallback (Opt-in, maskierter Key, verschlüsselte Ablage, Löschen, lokaler Monatszähler) umsetzen. **Abnahme:** Bei deaktiviertem Fallback oder fehlendem Key verlässt kein RapidAPI-Request das Backend; bei aktivierter gültiger Konfiguration wird RapidAPI erst nach einem zulässigen Primärfehler genau einmal aufgerufen.
-
-### M4 – MVP-Härtung und auslieferbare APK (1–2 Tage)
-
-- Fehler-Matrix, Retry/Idempotenz, Timeouts, Abbruch und lange Transkripte.
-- Unit-, Room-, Backend- und Compose-UI-Tests; reale Smoke-Tests.
-- Release-Signing lokal sicher einrichten, Datenschutz-/Betriebshinweise schreiben, APK erzeugen und auf Zielgerät testen.
-
-**MVP-Definition-of-Done:** Alle Muss-Funktionen funktionieren auf Android 13, keine Secrets sind in APK/Git, Kernpfade besitzen automatisierte Tests, fünf repräsentative Videos sind erfolgreich verarbeitet, bekannte Einschränkungen sind dokumentiert und eine installierbare signierte APK liegt vor.
-
-## 7. Teststrategie
-
-- **Parser-Unit-Tests:** alle unterstützten URL-Formen, zusätzliche Share-Texte, ungültige Hosts, Lookalike-Domains, fehlende/ungültige IDs.
-- **Backend-Unit-Tests:** Sprachfallback, Segmentierung, Promptzusammenbau, Fehler-Mapping, Idempotenz; externe APIs mit Fixtures mocken.
-- **Fallback-Tests:** Opt-in/Key-Wahrheitstabelle, erlaubte und nicht erlaubte Primärfehler, Provider-Normalisierung, `401`/`403`/`429`, Timeout, genau ein Fallback-Aufruf sowie vollständige Key-Redaktion in Logs und Fehlern.
-- **Contract-Tests:** JSON-Schemata App ↔ Backend einschließlich aller Fehlerkörper.
-- **Room-Tests:** CRUD, aktiver Stil als Invariante, Snapshots, Migrationen, sortierte Historie.
-- **Compose-/Instrumented-Tests:** Share-Intent, Eingabe, Liste, Detail, Video-Button mit verifizierter kanonischer URL, Copy/Share, Stil-CRUD, Prozessneustart.
-- **Manueller Gerätesmoke:** Tab S7+ unter Android 13/One UI 5.1.1; Hoch-/Querformat, Dark Mode, große Schrift, Netzunterbrechung und Samsung Sharesheet.
-- **Reale Medienmatrix:** manuelle/automatische Captions, DE/EN, sehr langes Video, Shorts-Link, keine Captions, privates Video.
-
-Testvideos in automatisierten Tests nur über kontrollierte IDs/Fixtures referenzieren; keine fremden Transkripte ins Repository committen.
-
-## 8. Datenschutz, Sicherheit und Betrieb
-
-- Vor der ersten Analyse transparent anzeigen, dass URL, Metadaten und Transkript an das eigene Backend und Inhalte zur Verarbeitung an OpenAI übertragen werden.
-- Datensparsame Logs: Request-ID, Dauer, Status und Fehlercode; keine API-Schlüssel, vollständigen URLs mit sensitiven Parametern, Transkripte oder Briefings.
-- OpenAI-, YouTube- und nutzereigene RapidAPI-Keys gelten gleichermaßen als Secrets. Ein offengelegter Key ist sofort zu widerrufen und zu rotieren; Git-Historie und Artefakte sind zusätzlich auf den Wert zu prüfen.
-- Android Network Security Config: nur HTTPS, kein Cleartext in Release. Backend-Schlüssel ausschließlich über Secret Store/Umgebungsvariablen.
-- Markdown-Links nur nach Nutzeraktion öffnen; erlaubte Schemes (`https`, optional `http`) prüfen. HTML standardmäßig deaktivieren/sanitizen.
-- YouTube-Nutzungsbedingungen, API-Richtlinien, Rechte am Transkript, OpenAI-Datenverarbeitung und notwendige Datenschutzerklärung sind vor Verteilung über den rein persönlichen Gebrauch hinaus gesondert zu prüfen.
-- Datenlöschung in App (ein Briefing und gesamte lokale Historie) spätestens vor Beta ergänzen. Backups standardmäßig bewusst konfigurieren, da sie Briefings/Transkripte enthalten.
-
-## 9. Risiken und Gegenmaßnahmen
-
-| Risiko | Auswirkung | Gegenmaßnahme |
-|---|---|---|
-| YouTube ändert internen Caption-Zugriff | Transkriptabruf bricht | Version pinnen, Adapter kapseln, Monitoring/Fixtures, Updatepfad und optional später Audio-Fallback |
-| Cloud-IP wird von YouTube blockiert | Häufige `RequestBlocked`-/`IpBlocked`-Fehler | Hosting-Spike M0, Backoff; nur bei Bedarf seriöser rotierender Proxy, keine Umgehung geschützter Inhalte |
-| `gpt-5.6-sol` ist im Projekt nicht verfügbar | Keine Briefings | M0-Preflight; exakter, konfigurierbarer Modellname; sichtbarer Blocker statt stiller Modellwechsel |
-| Sehr lange Transkripte | Kontextlimit, hohe Kosten/Latenz | Budgetprüfung, Map-Reduce, Fortschritt, Limit und Kostentelemetrie ohne Inhalte |
-| Android beendet Prozess/Netz fällt aus | scheinbar verlorener Job/Duplikat | Room zuerst, WorkManager/Polling, Idempotency-Key, Resume/Retry |
-| Prompt Injection im Transkript | verfälschtes Briefing | Daten delimitieren, Systemregeln priorisieren, keine Tools durch Modell, Ausgabe als untrusted Markdown behandeln |
-| YouTube-Quota erschöpft | Metadaten fehlen | Caching, minimale Parts, Quota-Monitoring; Titel/Kanal ggf. klar als fehlend markieren |
-| RapidAPI-Free-Quota erschöpft oder verursacht Kosten | Fallback fällt aus bzw. erzeugt unerwartete Kosten | Opt-in standardmäßig aus, lokaler Zähler/Warnung, kein automatischer Retry bei `429`, Dashboard als maßgebliche Anzeige |
-| Nutzer-Key gelangt in Logs/Backups | Konto- und Kostenmissbrauch | Keystore-gestützte Verschlüsselung, Backup-Ausschluss, sensitive Header redigieren, nur In-Memory im Backend, Rotationshinweis |
-
-## 10. Spätere Ausbaustufen
-
-1. **Qualität:** Audio-Transkription als expliziter Fallback, Sprechererkennung, Kapitelbilder, Zitatansicht mit Sprung zur Zeitmarke, Faktencheck gegen vom Nutzer erlaubte Quellen.
-2. **Organisation:** Suche, Filter, Tags, Favoriten, Ordner, Archiv, Export als Markdown-Datei/PDF, Sammelbriefings und Vergleich mehrerer Videos.
-3. **Automatisierung:** Playlist-/Kanal-Abos, Hintergrundwarteschlange, Benachrichtigung bei Abschluss, Android App Links und Share mehrerer URLs.
-4. **Personalisierung:** Stilvorlagen importieren/exportieren, Variablen, pro Kanal zugeordneter Standardstil, Vorschau und Stilversionen.
-5. **Betrieb:** Nutzerkonten, verschlüsselte Synchronisation, Self-Hosting-Paket (Docker Compose), serverseitige Queue, Kostenbudgets, Observability und Admin-Ansicht.
-6. **Barrierefreiheit/Tablet:** Master-Detail-Layout, Tastaturkürzel, TalkBack-Audit, dynamische Schrift, frei wählbare Darstellung.
-
-## 11. Research-Notizen und Quellen
-
-Stand der Recherche: **29. August 2026**.
-
-- `youtube-transcript-api` unterstützt manuelle und automatisch erzeugte Untertitel, Übersetzung und benötigt keinen Headless Browser. Es ist eine inoffizielle Schnittstelle und dokumentiert typische Cloud-IP-Sperren sowie Proxy-Konfiguration: [Projekt-README](https://github.com/jdepoix/youtube-transcript-api).
-- Android empfängt Text über einen Manifest-Intent-Filter für `ACTION_SEND`, `CATEGORY_DEFAULT` und `text/plain`: [Android Developers – Receive simple data](https://developer.android.com/develop/ui/compose/sharing/receive).
-- Android teilt Text über `ACTION_SEND` und einen Sharesheet/`Intent.createChooser`: [Android Developers – Send simple data](https://developer.android.com/training/sharing/send).
-- Offizielle Metadatenfelder und Quota-Kosten: [YouTube Data API – Videos: list](https://developers.google.com/youtube/v3/docs/videos/list) und [Channels: list](https://developers.google.com/youtube/v3/docs/channels/list).
-- OpenAI-Integration basiert auf der serverseitigen [Responses API](https://platform.openai.com/docs/api-reference/responses). Den vom Auftrag vorgegebenen Modellnamen vor Implementierung gegen die Modellverfügbarkeit des konkreten Projekts prüfen.
-- Optionaler Fallback: [RapidAPI – youtube-transcripts](https://rapidapi.com/8v2FWW4H6AmKw89/api/youtube-transcripts). Endpoint, Header und aktuelles Tariflimit vor Implementierung erneut im RapidAPI-Dashboard verifizieren; Limits und Preise können sich ändern.
+- [Chaquopy 17 – Gradle-Plugin, Python-Versionen und Pip-Pakete](https://chaquo.com/chaquopy/doc/current/android.html)
+- [Chaquopy – Version-/AGP-/minSdk-Matrix](https://chaquo.com/chaquopy/doc/current/versions.html)
+- [Chaquopy – Open-Source-Lizenz](https://chaquo.com/chaquopy/license/)
+- [youtube-transcript-api – offizielles Projekt](https://github.com/jdepoix/youtube-transcript-api)
+- [Android Keystore](https://developer.android.com/privacy-and-security/keystore)
+- [Android – EncryptedSharedPreferences (deprecated)](https://developer.android.com/reference/androidx/security/crypto/EncryptedSharedPreferences)
+- [Android – Security Checklist: Keystore und Tink](https://developer.android.com/privacy-and-security/security-tips)
+- [AndroidX DataStore – Tink-Verschlüsselungsmodul](https://developer.android.com/jetpack/androidx/releases/datastore)
+- [Android – sensible Daten aus Backups ausschließen](https://developer.android.com/privacy-and-security/risks/backup-best-practices)
+- [OpenAI API – Authentifizierung und Client-Key-Warnung](https://developers.openai.com/api/reference/overview)
+- [OpenAI – gpt-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)
+- [YouTube oEmbed](https://www.youtube.com/oembed)
+- [RapidAPI – youtube-transcripts](https://rapidapi.com/8v2FWW4H6AmKw89/api/youtube-transcripts)
