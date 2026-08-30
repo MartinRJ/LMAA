@@ -71,6 +71,16 @@ lokales Transkript, oEmbed, OpenAI und Room-Speicherung. `ACTION_SEND` aus der
 YouTube-App startet denselben Orchestrator automatisch und wird genau einmal
 konsumiert. Der manuelle Samsung-/YouTube-Sharesheet-Smoke ist bestanden.
 
+Post-MVP wurde die Eingangsregistrierung bewusst minimal finalisiert: Das
+Manifest nimmt ausschließlich `ACTION_SEND` mit `text/plain` an. Laufzeit und
+Consume-once-Pipeline akzeptieren denselben exakten Vertrag; `text/html`,
+Bildtypen und `ACTION_VIEW` lösen LMAA nicht auf. Der isolierte PackageManager-
+Test und entsprechende Abfragen der installierten Release-App sind auf Android
+13 bestanden. Ein Direct-Share-Shortcut wurde nach negativem One-UI-5.1.1-
+Praxistest vollständig entfernt. Die bevorzugte Position ist Systemzustand und
+wurde vom Nutzer erfolgreich über Samsung Good Lock neben Quick Share,
+Telegram und Outlook angeheftet.
+
 Das Ergebnis erscheint in einer eigenen scrollbaren Detailansicht mit
 kanonischem Video-Intent, Kopieren, Teilen und bestätigtem Löschen. Copy und
 Share enthalten Titel, Kanal, kanonische URL und Markdown. Room speichert

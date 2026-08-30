@@ -120,6 +120,7 @@ Keine geschätzten Prozentwerte verwenden.
 | M2 – Share und Export | erledigt | 2026-08-30 | `ACTION_SEND`, Copy/Share, persistente WorkManager-Wiederaufnahme sowie Hoch-/Querformat, Dark Mode und 150-%-Schriftgröße sind auf Android 13 verifiziert. |
 | M3 – Stile und Fallback-Einstellungen | erledigt | 2026-08-30 | Settings, Stil-CRUD/-Snapshots, RapidAPI-BYOK/Opt-in/Zähler, Duplikathinweis und Briefing-Löschung sind auf Android 13 verifiziert. |
 | M4 – Härtung und APK | erledigt | 2026-08-30 | Fehlermatrix, zwölf isolierte Gerätetests, konfigurierbarer RapidAPI-Raw-E2E, Secret-Scan, RSA-4096-Release-Signing, Clean-Cutover sowie Icon/Theme-Smoke auf Android 13 bestanden. |
+| Post-MVP – YouTube-Linkregistrierung | erledigt | 2026-08-30 | Exaktes `ACTION_SEND`-/`text/plain`-Ziel positiv und alle erweiterten Typen/Actions negativ auf Android 13 verifiziert; Direct-Share-Versuch entfernt, LMAA erfolgreich per Samsung Good Lock angeheftet. |
 
 ## Früh zu validierende Annahmen
 
@@ -507,6 +508,31 @@ Android-Produktarchitektur.
 - Offen/Blocker: keine.
 - Relevante Entscheidung: Benutzerstil ist die höchste redaktionelle
   Anweisungsebene; globale Prompts bleiben auf technische Grenzen beschränkt.
+
+### 2026-08-30 – YouTube-Share-Vertrag finalisiert
+
+- Milestone/Scope: Post-MVP, INT-001.
+- Validierte Anforderung: LMAA muss ein korrektes YouTube-Text-Share-Ziel sein;
+  die von Samsung verwaltete Position im Sharesheet ist davon getrennte Nutzer-/
+  Systemkonfiguration.
+- Umgesetzt: ausschließlich `ACTION_SEND` mit `text/plain` in Manifest und
+  Laufzeit. `text/*`, Deep-Link-Filter und der erfolglose Direct-Share-Shortcut
+  wurden vollständig entfernt; der Geräte-Shortcut-Store wurde bereinigt.
+- Verifiziert mit: JVM-Vertragstests; gemergtes Release-Manifest; Gradle
+  `testInstrumentedUnitTest assembleInstrumented
+  assembleInstrumentedAndroidTest lintDebug verifyReleaseSigning
+  assembleRelease` (176 Tasks, erfolgreich); isolierter PackageManager-Test auf
+  Android 13. Die installierte Release-App löst für `text/plain` exakt einmal
+  und für `text/html`, Bilder sowie `ACTION_VIEW` gar nicht auf.
+- Manuell geprüft auf: Galaxy Tab S7+ 5G, Android 13 / One UI 5.1.1. Ein
+  Direct-Share-Shortcut mit Rang 0 erschien wegen Samsungs Kommunikations-
+  priorisierung nicht. Nach dessen Entfernung hat der Nutzer LMAA erfolgreich
+  per Samsung Good Lock neben Quick Share, Telegram und Outlook angeheftet.
+- Offen/Blocker: keine.
+- Relevante Entscheidung: App-Code erzwingt kein Sharesheet-Ranking und bildet
+  LMAA nicht künstlich als Kommunikationsziel ab. Der App-Vertrag bleibt minimal;
+  die bevorzugte Position wird einmalig über die vorgesehene Samsung-
+  Systemkonfiguration festgelegt.
 
 ## Vorlage für Fortschrittseinträge
 

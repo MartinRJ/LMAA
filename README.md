@@ -92,6 +92,16 @@ Bereits verifiziert:
   hellgrauer Hinweis auf einen möglichen Basic-Tarif markiert; die App kennt den
   gebuchten Tarif nicht, das RapidAPI-Dashboard bleibt maßgeblich.
 
+Die nachträglich überprüfte Android-Share-Integration ist abgeschlossen:
+LMAA registriert ausschließlich `ACTION_SEND` mit `text/plain`. Das Release
+wird auf Android 13 positiv für diesen Vertrag und negativ für `text/html`,
+Bildtypen und `ACTION_VIEW` aufgelöst. Ein versuchsweise veröffentlichter
+Direct-Share-Shortcut wurde vollständig entfernt, weil One UI 5.1.1 die obere
+Zeile auf dem Zieltablet weiterhin nach Kommunikationshistorie statt App-Rang
+sortierte. Die sichtbare Position ist deshalb bewusst Nutzer-/Systemkonfiguration;
+der Nutzer hat LMAA erfolgreich über Samsung Good Lock neben Quick Share,
+Telegram und Outlook angeheftet.
+
 M0 ist abgeschlossen. Der explizite Short `engQjz-Lm54` wurde auf dem Tablet
 korrekt kanonisiert und lieferte kontrolliert `TRANSCRIPTS_DISABLED`; wegen
 eindeutig fehlender Captions wurde RapidAPI nicht ausgelöst. Der Android-
@@ -112,7 +122,7 @@ Die detaillierte Anforderungsprüfung und Nachweismatrix steht in
 
 ### Link erfassen
 
-- `Intent.ACTION_SEND` mit `text/plain` aus der YouTube-App empfangen.
+- `Intent.ACTION_SEND` mit exakt `text/plain` aus der YouTube-App empfangen.
 - Link direkt eingeben oder einfügen.
 - `youtube.com/watch?v=…`, `youtu.be/…`, `/shorts/…` und `/live/…`
   normalisieren.

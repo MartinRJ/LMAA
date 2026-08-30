@@ -151,14 +151,27 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun acceptShareIntent(intent: Intent?) {
-        val sharedText = intent?.takeIf {
-            it.action == Intent.ACTION_SEND && it.type?.startsWith("text/") == true
-        }?.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim().orEmpty()
-        if (sharedText.isNotEmpty()) {
+        val sharedText = extractIncomingYoutubeText(
+            action = intent?.action,
+            mimeType = intent?.type,
+            sharedText = intent?.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
+        )
+        if (sharedText != null) {
             shareSequence += 1
             incomingShare.value = IncomingShare(shareSequence, sharedText)
         }
     }
+}
+
+internal fun extractIncomingYoutubeText(
+    action: String?,
+    mimeType: String?,
+    sharedText: String?,
+): String? {
+    val candidate = sharedText.takeIf {
+        action == Intent.ACTION_SEND && mimeType == "text/plain"
+    }
+    return candidate?.trim()?.takeIf(String::isNotEmpty)
 }
 
 private data class IncomingShare(val sequence: Long, val text: String)
