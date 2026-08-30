@@ -96,11 +96,17 @@ setzen den Modus auf `Aus`. Nach Status-/Content-Type-/UTF-8-/Größenprüfung g
 der komplette Response-Body ohne providerspezifische Deserialisierung als
 UNTRUSTED-Block an OpenAI.
 
-Die
-Stilansicht unterstützt benutzerdefinierte Stile, Aktivierung, Bearbeitung und
-Löschung; der integrierte Standardstil ist geschützt. Analyseauftrag und
-Briefing speichern Name, Anweisung und Ausgabesprache als unveränderlichen
-Snapshot. Der lokale RapidAPI-Zähler erfasst Versuche und Erfolge. `/100` wird
+Die Stilansicht unterstützt benutzerdefinierte Stile, Aktivierung, Bearbeitung
+und Löschung; der integrierte Standardstil ist geschützt. Eigene Stile steuern
+Inhalt, Auswahl, Struktur, Sprache und Ausgabeformat vollständig. Die bisher
+globalen Pflichtüberschriften sowie Regeln zu Quellenkritik, Unsicherheiten,
+Zeitmarken und Markdown liegen jetzt ausschließlich in `Standard`. Map-Reduce
+erhält die aktive Stilkonfiguration ohne eigenes Format; Zeilenumbrüche bleiben
+erhalten. Nur technische UNTRUSTED-/Tool-/Providergrenzen, leere Ausgabe und
+aktives unsicheres Markup bleiben global. `ensureDefault` synchronisiert eine
+bereits installierte geschützte Default-Definition, während Analyseauftrag und
+Briefing Name, Anweisung und Ausgabesprache weiterhin als unveränderlichen
+Snapshot speichern. Der lokale RapidAPI-Zähler erfasst Versuche und Erfolge. `/100` wird
 nur als hellgrauer Basic-Tarif-Hinweis dargestellt; das gebuchte Kontingent ist
 der App nicht bekannt.
 
@@ -149,7 +155,7 @@ getrennte Eigenschaften sind.
 Gerätetesthinweis: Gradles UTP-Task `connectedDebugAndroidTest` kann die Daten
 der installierten Debug-App ersetzen. Er darf deshalb nicht gegen die täglich
 genutzte Installation mit BYOK/Room-Historie laufen. M4 stellt deshalb
-standardmäßig gegen `de.lmaa.app.testbed` zusammen. Zwölf isolierte
+standardmäßig gegen `de.lmaa.app.testbed` zusammen. Dreizehn isolierte
 Instrumentierungstests liefen auf dem Zieltablet; der optionale RapidAPI-
 Live-Smoke war ohne explizites Instrumentierungsargument übersprungen. Für den
 einmaligen Live-Smoke wurde der Test gezielt gegen `debug` gebaut, verwendete
@@ -183,6 +189,10 @@ synthetischer Stil wurde angelegt, aktiviert, in einem realen OpenAI-Briefing
 gesnapshottet und danach zusammen mit dem erzeugten Testbriefing wieder entfernt;
 der Endzustand ist `Standard`. Nach dem Release-Cutover enthält die neue lokale
 Historie das erfolgreiche Raw-Response-Testbriefing; RapidAPI steht bei 5/5.
+Nach der Freigabe benutzerdefinierter Ausgabeformen erzeugte ein weiterer
+temporärer Stil live exakt einen kurzen Satz ohne Überschrift, Liste, Zeitmarke
+oder Markdown-Struktur. Testbriefing und Stil wurden anschließend gelöscht,
+`Standard` erneut aktiviert und der RapidAPI-Stand blieb unverändert bei 5/5.
 
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.

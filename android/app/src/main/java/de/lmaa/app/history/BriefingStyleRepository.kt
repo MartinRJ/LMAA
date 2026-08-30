@@ -27,9 +27,26 @@ internal class BriefingStyleRepository(
     val active: Flow<BriefingStyle?> = dao.observeActive().map { it?.toModel() }
 
     suspend fun ensureDefault(): BriefingStyle {
-        dao.findByNormalizedName(normalizeName(DEFAULT_BRIEFING_STYLE.name))?.let {
-            if (dao.findActive() == null) dao.setActive(it.id, clock())
-            return requireNotNull(dao.find(it.id)).toModel()
+        dao.findByNormalizedName(normalizeName(DEFAULT_BRIEFING_STYLE.name))?.let { existing ->
+            val now = clock()
+            if (
+                existing.isBuiltIn &&
+                (
+                    existing.instructions != DEFAULT_BRIEFING_STYLE.instructions ||
+                        existing.outputLanguage != DEFAULT_BRIEFING_STYLE.outputLanguage
+                )
+            ) {
+                check(
+                    dao.updateBuiltInDefaults(
+                        id = existing.id,
+                        instructions = DEFAULT_BRIEFING_STYLE.instructions,
+                        outputLanguage = DEFAULT_BRIEFING_STYLE.outputLanguage,
+                        updatedAt = now,
+                    ) == 1,
+                ) { "BUILT_IN_STYLE_REFRESH_FAILED" }
+            }
+            if (dao.findActive() == null) dao.setActive(existing.id, now)
+            return requireNotNull(dao.find(existing.id)).toModel()
         }
         val now = clock()
         val id = dao.insert(

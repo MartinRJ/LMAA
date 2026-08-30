@@ -3,7 +3,8 @@ from dataclasses import dataclass, field
 import pytest
 
 from lmaa_backend.briefings import (
-    REQUIRED_HEADINGS,
+    DEFAULT_HEADINGS,
+    DEFAULT_STYLE_INSTRUCTIONS,
     BriefingService,
     InvalidBriefingOutput,
     chunk_transcript,
@@ -69,8 +70,8 @@ def test_long_transcript_uses_deterministic_map_reduce() -> None:
     assert len(chunks) > 1
     assert len(generator.calls) == len(chunks) + 1
     reduced_input = str(generator.calls[-1]["input_text"])
-    assert "Teil 1/" in reduced_input
-    assert f"Teil {len(chunks)}/{len(chunks)}" in reduced_input
+    assert "TEILZUSAMMENFASSUNG 1/" in reduced_input
+    assert f"TEILZUSAMMENFASSUNG {len(chunks)}/{len(chunks)}" in reduced_input
 
 
 def test_transcript_control_characters_and_line_breaks_are_neutralized() -> None:
@@ -79,8 +80,34 @@ def test_transcript_control_characters_and_line_breaks_are_neutralized() -> None
     assert chunk_transcript((segment,), 1_000) == (("[00:01:05] erste zweite Zeile"),)
 
 
-def test_missing_required_heading_is_rejected() -> None:
-    generator = FakeGenerator(["# Kernaussage\nUnvollständig"])
+def test_custom_style_owns_structure_and_preserves_line_breaks() -> None:
+    output = "Ergebnis: genau ein freier Satz ohne Überschrift."
+    style = "Antworte in genau einem Satz.\n\nNutze keine Überschriften."
+    generator = FakeGenerator([output])
+
+    result = BriefingService(generator).create(
+        _transcript(),
+        canonical_url="https://www.youtube.com/watch?v=ABCDEFGHIJK",
+        style_name="Frei",
+        style_instructions=style,
+    )
+
+    assert result.markdown == output
+    instructions = str(generator.calls[0]["instructions"])
+    assert style in instructions
+    assert all(heading not in instructions for heading in DEFAULT_HEADINGS)
+
+
+def test_default_style_contains_structure_and_editorial_rules() -> None:
+    assert all(heading in DEFAULT_STYLE_INSTRUCTIONS for heading in DEFAULT_HEADINGS)
+    assert "fehlende Belege" in DEFAULT_STYLE_INSTRUCTIONS
+    assert "Unsicherheiten" in DEFAULT_STYLE_INSTRUCTIONS
+    assert "Zeitmarken" in DEFAULT_STYLE_INSTRUCTIONS
+    assert "Markdown" in DEFAULT_STYLE_INSTRUCTIONS
+
+
+def test_empty_output_is_rejected() -> None:
+    generator = FakeGenerator(["  "])
 
     with pytest.raises(InvalidBriefingOutput):
         BriefingService(generator).create(
@@ -100,4 +127,4 @@ def _transcript() -> TranscriptDocument:
 
 
 def _valid_markdown() -> str:
-    return "\n\n".join(f"{heading}\nTest" for heading in REQUIRED_HEADINGS)
+    return "\n\n".join(f"{heading}\nTest" for heading in DEFAULT_HEADINGS)

@@ -373,6 +373,21 @@ internal interface BriefingStyleDao {
         updatedAt: Long,
     ): Int
 
+    @Query(
+        """
+        UPDATE briefing_styles
+           SET instructions = :instructions, outputLanguage = :outputLanguage,
+               updatedAtEpochMillis = :updatedAt
+         WHERE id = :id AND isBuiltIn = 1
+        """,
+    )
+    suspend fun updateBuiltInDefaults(
+        id: Long,
+        instructions: String,
+        outputLanguage: String,
+        updatedAt: Long,
+    ): Int
+
     @Query("UPDATE briefing_styles SET isActive = 0 WHERE isActive = 1")
     suspend fun deactivateAll()
 

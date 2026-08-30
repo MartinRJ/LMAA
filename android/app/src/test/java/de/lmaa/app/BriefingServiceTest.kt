@@ -3,6 +3,7 @@ package de.lmaa.app
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,6 +25,43 @@ class BriefingServiceTest {
     }
 
     @Test
+    fun customStyleOwnsStructureAndOutputFormat() = runBlocking {
+        val output = "Ergebnis: genau ein freier Satz ohne Überschrift."
+        val generator = FakeBriefingGenerator(mutableListOf(output))
+        val style = """Antworte in genau einem Satz.
+
+Nutze keine Überschriften und kein Markdown."""
+
+        val result = BriefingService(generator).create(
+            transcript = transcript(),
+            metadata = metadata(),
+            canonicalUrl = "https://www.youtube.com/watch?v=ABCDEFGHIJK",
+            styleName = "Freier Stil",
+            styleInstructions = style,
+        ) as BriefingGenerationResult.Success
+
+        assertEquals(output, result.document.markdown)
+        val instructions = generator.calls.single().first
+        assertTrue(instructions.contains(style))
+        DEFAULT_BRIEFING_HEADINGS.forEach { heading ->
+            assertFalse(instructions.contains(heading))
+        }
+        assertFalse(instructions.contains("Fehlende Informationen"))
+        assertFalse(instructions.contains("Verlinke Zeitmarken"))
+    }
+
+    @Test
+    fun defaultStyleContainsFormerStructureAndEditorialRules() {
+        DEFAULT_BRIEFING_HEADINGS.forEach { heading ->
+            assertTrue(DEFAULT_STYLE_INSTRUCTIONS.contains(heading))
+        }
+        assertTrue(DEFAULT_STYLE_INSTRUCTIONS.contains("fehlende Belege"))
+        assertTrue(DEFAULT_STYLE_INSTRUCTIONS.contains("Unsicherheiten"))
+        assertTrue(DEFAULT_STYLE_INSTRUCTIONS.contains("Zeitmarken"))
+        assertTrue(DEFAULT_STYLE_INSTRUCTIONS.contains("Markdown"))
+    }
+
+    @Test
     fun longTranscriptUsesChronologicalMapReduce() = runBlocking {
         val segments = List(6) { index ->
             TranscriptSegment("Segment $index " + "x".repeat(600), index.toDouble(), 1.0)
@@ -41,7 +79,38 @@ class BriefingServiceTest {
 
         assertTrue(chunkCount > 1)
         assertEquals(chunkCount, result.document.mapChunkCount)
-        assertTrue(generator.calls.last().second.contains("Teil $chunkCount/$chunkCount"))
+        assertTrue(
+            generator.calls.last().second.contains(
+                "TEILZUSAMMENFASSUNG $chunkCount/$chunkCount",
+            ),
+        )
+        val mapInstructions = generator.calls.first().first
+        assertTrue(mapInstructions.contains(DEFAULT_STYLE_INSTRUCTIONS))
+        assertFalse(mapInstructions.substringBefore("Die folgende Stilkonfiguration").contains("Markdown"))
+        assertFalse(mapInstructions.substringBefore("Die folgende Stilkonfiguration").contains("Zeitmarken"))
+    }
+
+    @Test
+    fun emptyAndActiveMarkupOutputsRemainRejectedIndependentlyOfStyle() = runBlocking {
+        val empty = BriefingService(FakeBriefingGenerator(mutableListOf("  "))).create(
+            transcript(),
+            metadata(),
+            "https://www.youtube.com/watch?v=ABCDEFGHIJK",
+            "Frei",
+            "Beliebige Struktur.",
+        )
+        val unsafe = BriefingService(
+            FakeBriefingGenerator(mutableListOf("<script>alert('x')</script>")),
+        ).create(
+            transcript(),
+            metadata(),
+            "https://www.youtube.com/watch?v=ABCDEFGHIJK",
+            "Frei",
+            "Beliebige Struktur.",
+        )
+
+        assertEquals(BriefingGenerationResult.Failure("EMPTY_BRIEFING"), empty)
+        assertEquals(BriefingGenerationResult.Failure("UNSAFE_BRIEFING_MARKUP"), unsafe)
     }
 
     @Test
@@ -115,5 +184,5 @@ class BriefingServiceTest {
         Instant.EPOCH,
     )
 
-    private fun validMarkdown() = REQUIRED_BRIEFING_HEADINGS.joinToString("\n\n") { "$it\nTest" }
+    private fun validMarkdown() = DEFAULT_BRIEFING_HEADINGS.joinToString("\n\n") { "$it\nTest" }
 }
