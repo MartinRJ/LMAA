@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("com.chaquo.python")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -15,6 +16,10 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildFeatures {
@@ -32,6 +37,21 @@ android {
     }
 }
 
+chaquopy {
+    defaultConfig {
+        version = "3.10"
+        pip {
+            install("youtube-transcript-api==1.2.4")
+            install("requests==2.34.2")
+            install("defusedxml==0.7.1")
+            install("urllib3==2.7.0")
+            install("certifi==2026.7.22")
+            install("charset-normalizer==3.5.1")
+            install("idna==3.19")
+        }
+    }
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.08.00")
 
@@ -42,6 +62,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

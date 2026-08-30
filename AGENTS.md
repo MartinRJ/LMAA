@@ -21,8 +21,8 @@ Server-, Cloud- oder Pro-Ausbaustufen dürfen diesen Pfad nicht verdrängen.
 2. Android: Kotlin, Jetpack Compose/Material 3, Room als lokale Source of Truth,
    minSdk 26; Android 13 auf dem Galaxy Tab ist zwingendes Testziel.
 3. `youtube-transcript-api==1.2.4` läuft primär über Chaquopy 17/Python 3.10
-   innerhalb der APK. Dieser Gerätepfad ist vor weiterem Providerausbau zu
-   implementieren und live zu verifizieren.
+   innerhalb der APK. Dieser Gerätepfad ist auf dem Zieltablet verifiziert und
+   bleibt vor jedem optionalen RapidAPI-Pfad auszuführen.
 4. YouTube oEmbed, OpenAI Responses und optional RapidAPI werden direkt von der
    App über HTTPS aufgerufen. Es gibt keinen App→FastAPI-Produktvertrag.
 5. Das OpenAI-Modell heißt exakt `gpt-5.6-sol`. Nie still auf ein anderes
@@ -92,7 +92,7 @@ Keine geschätzten Prozentwerte verwenden.
 | Milestone | Status | Letzte Änderung | Nachweis / nächster Schritt |
 |---|---|---:|---|
 | Planung und Research | erledigt | 2026-08-30 | Anforderungen auf autonome Tablet-App korrigiert; V&V-Matrix und Primärquellen dokumentiert. |
-| M0 – Lokale Laufzeit und Spikes | in Arbeit | 2026-08-30 | Android-Gerüst/Renderer und Desktop-Providerreferenz bestehen; als Nächstes Chaquopy plus lokaler Transcript-Liveabruf auf dem Tablet. |
+| M0 – Lokale Laufzeit und Spikes | in Arbeit | 2026-08-30 | Chaquopy und lokaler Primärtranskriptabruf sind auf dem Tablet verifiziert; als Nächstes direkter Android-oEmbed-/OpenAI-Pfad und BYOK-Secret-Store. |
 | M1 – Persistenter Happy Path | offen | 2026-08-30 | Lokales Transkript bis Room-persistierter Markdown-Detailansicht. |
 | M2 – Share und Export | offen | 2026-08-29 | Share-Intent, Copy/Share und Wiederaufnahme. |
 | M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Stil-CRUD, Snapshots, Keystore-Key-UX und RapidAPI-Zähler. |
@@ -100,9 +100,9 @@ Keine geschätzten Prozentwerte verwenden.
 
 ## Früh zu validierende Annahmen
 
-- Chaquopy 17 unterstützt formal AGP 9.2.1, Python 3.10, minSdk 26 und ARM64.
-  Paketinstallation und realer Transcript-Abruf sind auf dem Tablet noch nicht
-  verifiziert.
+- Chaquopy 17, Python 3.10, ARM64 und die gepinnten Transcript-Pakete bauen
+  online wie offline. Reale manuelle/automatische Transkripte bis 7.311 Segmente
+  wurden auf dem Tablet abgerufen; APK-Größe beträgt rund 27,8 MB.
 - `youtube-transcript-api` nutzt eine undokumentierte YouTube-Schnittstelle;
   Änderungen oder IP-Sperren bleiben möglich.
 - Der direkte OpenAI-Key im persönlichen Client widerspricht der allgemeinen
@@ -125,7 +125,7 @@ Keine geschätzten Prozentwerte verwenden.
 |---|---|---|
 | 2026-08-29 | Python/FastAPI-Backend vorgesehen | Ursprüngliche Planung zur einfachen Python-Einbindung; am 2026-08-30 wegen falscher Interpretation von „lokal“ aufgehoben. |
 | 2026-08-30 | Autonome Android-App ohne LMAA-Backend | Entspricht dem persönlichen Tablet-Workflow, vermeidet Hosting/Betriebskosten und macht RapidAPI nur zum seltenen Fallback. |
-| 2026-08-30 | Chaquopy 17/Python 3.10 für den Primärprovider | Offizielle Matrix passt zu AGP 9.2.1/minSdk 26/ARM64; `youtube-transcript-api` ist reines Python. Geräteverifikation bleibt M0-Pflicht. |
+| 2026-08-30 | Chaquopy 17/Python 3.10 für den Primärprovider | Offizielle Matrix passt zu AGP 9.2.1/minSdk 26/ARM64; APK-Build, Offline-Rebuild und mehrere reale Geräteabrufe sind verifiziert. |
 | 2026-08-30 | Direkte OpenAI-Nutzung mit persönlichem BYOK | Kein eigener Server gewünscht; Risiko wird durch nutzereingegebenen restriktiven Key, DataStore/Tink, Android Keystore, Backup-Ausschluss und Spend-Limit begrenzt. |
 | 2026-08-30 | Proto DataStore + Tink AEAD als Secret-Store | Nur Ciphertext wird persistiert; das Tink-Keyset ist über Android Keystore geschützt. `EncryptedSharedPreferences` wurde wegen Deprecation verworfen; unverschlüsselte Preferences sind verboten. Die konkrete Integration wird in M0 nach Stabilitäts- und Gerätetest festgelegt. |
 | 2026-08-30 | YouTube oEmbed als MVP-Metadatenpfad | Titel, Kanalname und Thumbnail genügen ohne zusätzlichen Key; weitere Felder bleiben nullable. |
@@ -190,6 +190,29 @@ Android-Produktarchitektur.
 - Verifiziert mit: Dokumentations-Konsistenzsuche und `git diff --check`;
   Implementierung und Zielgerätetest bleiben offen.
 - RapidAPI: keine Live-Anfrage; Entwicklungsstand unverändert 3/100.
+
+### 2026-08-30 – Lokaler Primärtranskriptpfad auf Android verifiziert
+
+- Milestone/Scope: M0, TRN-001 und TRN-002.
+- Validierte Anforderung: `youtube-transcript-api==1.2.4` läuft ohne API-Key,
+  Backend oder PC innerhalb der Android-App; RapidAPI bleibt nachgelagerter
+  Opt-in-Fallback.
+- Umgesetzt: Chaquopy 17.0.0/Python 3.10 für `arm64-v8a`, vollständig gepinnte
+  Python-Abhängigkeiten, schmale JSON-Bridge, kontrollierte Fehlercodes,
+  Coroutine-Ausführung außerhalb des Main Threads und produktive Compose-UI.
+- Verifiziert mit: Ruff/Format, 53 Pytest-Tests, Gradle
+  `testDebugUnitTest assembleDebug lintDebug`, zusätzlichem Offline-Rebuild und
+  APK-Secret-Scan; alle Checks bestanden.
+- Manuell/ADB-geprüft auf Galaxy Tab S7+ 5G, Android 13: manuelles Deutsch
+  (60 Segmente), automatisch erzeugtes Deutsch (1.660), automatisch erzeugtes
+  Englisch (27) und langes Englisch (7.311/210.682 Zeichen). Die produktive
+  URL→Abruf-UI sowie `INVALID_VIDEO_ID` wurden ebenfalls verifiziert.
+- Toolchainbefund: Chaquopy 17 ist nicht mit Gradles Configuration Cache
+  kompatibel; dieser ist projektweit deaktiviert, normale Build-Caches und
+  Parallelisierung bleiben aktiv. Die Debug-APK ist rund 27,8 MB groß.
+- Offen: direkter Android-oEmbed-/OpenAI-Pfad, BYOK-Secret-Store, expliziter
+  YouTube-Short-Nachweis und vollständiger M0-Briefingpfad.
+- RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
 
 ## Vorlage für Fortschrittseinträge
 

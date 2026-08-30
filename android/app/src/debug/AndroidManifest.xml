@@ -4,5 +4,8 @@
         <activity
             android:name=".MarkdownFixtureActivity"
             android:exported="true" />
+        <activity
+            android:name=".LocalTranscriptSmokeActivity"
+            android:exported="true" />
     </application>
 </manifest>

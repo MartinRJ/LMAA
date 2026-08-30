@@ -30,9 +30,9 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
 
 | ID | Anforderung | Validation | Verification am 2026-08-30 | Nächster Nachweis |
 |---|---|---|---|---|
-| LOC-001 | Kein LMAA-Server, kein PC, keine Domain | **validiert**; entspricht dem persönlichen mobilen Workflow und vermeidet zusätzliche Betriebskosten | **nicht erfüllt**; die Providerpipeline existiert bisher nur im FastAPI-Referenzprototyp | vollständiger Geräte-Smoke ohne konfigurierten Backend-Host |
-| TRN-001 | `youtube-transcript-api` läuft primär in der APK | **validiert**; Chaquopy 17 passt formal zu AGP 9.2.1, minSdk 26, Python 3.10 und ARM64 | **offen**; kein Chaquopy-Plugin und keine Python-Bridge im Android-Modul | APK-Build und realer Abruf auf dem Galaxy Tab |
-| TRN-002 | Kein API-Key für den Primärtranskriptpfad | **validiert**; die Bibliothek fordert keinen Key und keinen Headless Browser | **nur Desktop verifiziert** | Geräteabruf ohne gesetzten YouTube-/RapidAPI-Key |
+| LOC-001 | Kein LMAA-Server, kein PC, keine Domain | **validiert**; entspricht dem persönlichen mobilen Workflow und vermeidet zusätzliche Betriebskosten | **teilweise erfüllt**; produktiver URL→Primärtranskriptpfad läuft autonom auf dem Tablet, Briefing-Gesamtpfad ist offen | vollständiger Geräte-Smoke bis zum Briefing ohne Backend-Host |
+| TRN-001 | `youtube-transcript-api` läuft primär in der APK | **validiert**; Chaquopy 17 passt zu AGP 9.2.1, minSdk 26, Python 3.10 und ARM64 | **erfüllt**; APK-/Offline-Build und mehrere reale Geräteabrufe bestanden | Regression und expliziten YouTube-Short ergänzen |
+| TRN-002 | Kein API-Key für den Primärtranskriptpfad | **validiert**; die Bibliothek fordert keinen Key und keinen Headless Browser | **erfüllt auf dem Zielgerät**; lokale Key-Dateien fehlen in der APK, RapidAPI wurde nicht aufgerufen | APK-Secret-Scan fortführen |
 | FAL-001 | RapidAPI nur nach geeignetem Primärfehler und Opt-in | **validiert**; schont das persönliche 100-Request-Kontingent | **Referenzlogik verifiziert, Android offen**; bisher 3/100 Live-Versuche | MockWebServer-Wahrheitstabelle in Android; kein weiterer Live-Aufruf nötig |
 | MET-001 | Titel, Kanalname und Thumbnail über oEmbed | **validiert**; genügt dem MVP ohne zusätzlichen Key | **Desktop verifiziert, Android offen** | direkter Android-oEmbed-Test mit nullable ID/Datum/Dauer |
 | AIG-001 | Briefing mit exakt `gpt-5.6-sol`, ohne Modellfallback | **validiert**; Modell und Responses-Endpunkt existieren und wurden praktisch erreicht | **Desktop verifiziert, Android offen** | direkter Android-Request mit `store=false` und ohne Tools |
@@ -55,17 +55,17 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
   hängt nur von `requests` sowie `defusedxml` ab.
 - Chaquopy kann reine Python-Pakete über seinen Pip-Block in die App einbauen.
 
-### Noch nicht bewiesene Annahmen
+### Verifizierte Befunde und Restpunkte
 
-- Installation aller Python-Abhängigkeiten durch Chaquopy im konkreten
-  Gradle-Projekt.
-- TLS/CA- und HTTP-Verhalten von `requests` auf dem Galaxy Tab.
-- Kompatibilität des undokumentierten YouTube-Webclient-Abrufs mit der mobilen
-  Geräte-IP und aktuellen YouTube-Antworten.
-- Laufzeit, Speicherbedarf, APK-Größe und Verhalten nach Prozessneustart.
-
-Diese Punkte sind der erste Implementierungs- und Testauftrag von M0. Desktop-
-Erfolge ersetzen den Gerätebeweis nicht.
+- Chaquopy installiert die vollständig gepinnten Python-Abhängigkeiten und
+  reproduziert den Build anschließend offline.
+- TLS/CA- und HTTP-Verhalten von `requests` funktioniert auf dem Galaxy Tab.
+- Der undokumentierte YouTube-Webclient-Abruf lieferte über die Geräte-IP
+  manuelle und automatisch erzeugte deutsche/englische Transkripte.
+- Ein langes Transkript mit 7.311 Segmenten und 210.682 Zeichen überquerte die
+  Python/Kotlin-Bridge erfolgreich; die Debug-APK ist rund 27,8 MB groß.
+- Detaillierte Laufzeit-/Speichermessung, Prozessneustart während eines Abrufs
+  und ein explizit als YouTube Short verifizierter Fall bleiben offen.
 
 ## Zielkonflikt: serverloser MVP und OpenAI-Key
 
@@ -110,11 +110,14 @@ anzeigen, loggen oder sichern.
 
 ## Verification-Plan für M0
 
-1. Chaquopy/Python und exakt gepinnte Transcript-Abhängigkeiten bauen.
-2. Instrumentierungstest ruft die Python-Bridge mit synthetischen Daten auf und
-   prüft DTO-/Fehlernormalisierung.
-3. Geräte-Smokes rufen manuelle/automatische, deutsche/englische, Short- und
-   lange Transkripte primär lokal ab.
+1. **Erfüllt:** Chaquopy/Python und exakt gepinnte Transcript-Abhängigkeiten
+   bauen online und offline.
+2. **Erfüllt:** Drei synthetische Python-Bridge-Tests prüfen Normalisierung,
+   Vorvalidierung und Sprachcodefilter; reale Geräte-Smokes prüfen die
+   Python/Kotlin-Grenze.
+3. **Teilweise erfüllt:** Geräte-Smokes rufen manuelle/automatische,
+   deutsche/englische, kurze und lange Transkripte primär lokal ab. Ein
+   explizit als YouTube Short verifizierter Fall bleibt offen.
 4. MockWebServer erzwingt jeden zulässigen und unzulässigen Fallbackfall und zählt
    ausgehende RapidAPI-Requests.
 5. Direkter oEmbed- und OpenAI-Pfad läuft auf dem Tablet; OpenAI antwortet mit
@@ -131,8 +134,10 @@ anzeigen, loggen oder sichern.
 
 Die ursprüngliche Planung entschied sich wegen der Python-Bibliothek für
 FastAPI. Dadurch wurden Hosting, Server-Contracts und RapidAPI-Weiterleitung
-ausgebaut, während der entscheidende Chaquopy-Gerätespike ausblieb. Diese
-Implementierung verifiziert Providerverhalten, aber nicht LOC-001 oder TRN-001.
+ausgebaut, während der entscheidende Chaquopy-Gerätespike ausblieb. Der damalige
+Prototyp verifiziert LOC-001 oder TRN-001 nicht; die aktuelle Android-
+Implementierung erfüllt inzwischen TRN-001 und den Transcript-Anteil von
+LOC-001.
 
 Der Backend-Prototyp darf deshalb nur als Testreferenz verwendet werden. Neue
 Produktlogik wird zuerst in Android implementiert; keine Funktion darf einen
