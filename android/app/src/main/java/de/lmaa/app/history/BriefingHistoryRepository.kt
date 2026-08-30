@@ -2,6 +2,7 @@ package de.lmaa.app.history
 
 import de.lmaa.app.CompletedAnalysis
 import de.lmaa.app.DEFAULT_STYLE_INSTRUCTIONS
+import java.util.UUID
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
@@ -44,47 +45,68 @@ internal class BriefingHistoryRepository(
     suspend fun save(analysis: CompletedAnalysis): StoredBriefing {
         val now = System.currentTimeMillis()
         val briefingId = dao.persistCompletedAnalysis(
-            video = VideoEntity(
-                videoId = analysis.transcript.videoId,
-                canonicalUrl = analysis.canonicalUrl,
-                title = analysis.metadata.title,
-                channelId = analysis.metadata.channelId,
-                channelTitle = analysis.metadata.channelTitle,
-                publishedAtEpochMillis = analysis.metadata.publishedAt?.toEpochMilli(),
-                durationIso8601 = analysis.metadata.durationIso8601,
-                durationSeconds = analysis.metadata.durationSeconds,
-                thumbnailUrl = analysis.metadata.thumbnailUrl,
-                fetchedAtEpochMillis = analysis.metadata.fetchedAt.toEpochMilli(),
-            ),
-            transcript = TranscriptEntity(
-                videoId = analysis.transcript.videoId,
-                provider = analysis.transcript.provider,
-                languageCode = analysis.transcript.languageCode,
-                isGenerated = analysis.transcript.isGenerated,
-                segmentsJson = encodeSegments(analysis),
-                plainText = analysis.transcript.segments.joinToString("\n") { it.text },
-                fetchedAtEpochMillis = now,
-            ),
-            briefing = BriefingEntity(
-                videoId = analysis.transcript.videoId,
-                transcriptId = 0,
-                styleNameSnapshot = "Standard",
-                styleInstructionsSnapshot = DEFAULT_STYLE_INSTRUCTIONS,
-                modelSnapshot = analysis.briefing.model,
-                markdown = analysis.briefing.markdown,
-                mapChunkCount = analysis.briefing.mapChunkCount,
-                status = "COMPLETED",
-                errorCode = null,
-                createdAtEpochMillis = now,
-            ),
+            video = videoEntity(analysis),
+            transcript = transcriptEntity(analysis, now),
+            briefing = briefingEntity(analysis, now),
         )
-        return requireNotNull(dao.findBriefing(briefingId)) {
-            "Gespeichertes Briefing ist nicht lesbar"
-        }.toModel()
+        return requireStoredBriefing(briefingId)
+    }
+
+    suspend fun saveForJob(jobId: UUID, analysis: CompletedAnalysis): StoredBriefing {
+        val now = System.currentTimeMillis()
+        val briefingId = dao.persistCompletedAnalysisForJob(
+            jobId = jobId.toString(),
+            video = videoEntity(analysis),
+            transcript = transcriptEntity(analysis, now),
+            briefing = briefingEntity(analysis, now),
+            completedAt = now,
+        )
+        return requireStoredBriefing(briefingId)
     }
 
     suspend fun find(briefingId: Long): StoredBriefing? =
         dao.findBriefing(briefingId)?.toModel()
+
+    private suspend fun requireStoredBriefing(briefingId: Long): StoredBriefing =
+        requireNotNull(dao.findBriefing(briefingId)) {
+            "Gespeichertes Briefing ist nicht lesbar"
+        }.toModel()
+
+    private fun videoEntity(analysis: CompletedAnalysis) = VideoEntity(
+        videoId = analysis.transcript.videoId,
+        canonicalUrl = analysis.canonicalUrl,
+        title = analysis.metadata.title,
+        channelId = analysis.metadata.channelId,
+        channelTitle = analysis.metadata.channelTitle,
+        publishedAtEpochMillis = analysis.metadata.publishedAt?.toEpochMilli(),
+        durationIso8601 = analysis.metadata.durationIso8601,
+        durationSeconds = analysis.metadata.durationSeconds,
+        thumbnailUrl = analysis.metadata.thumbnailUrl,
+        fetchedAtEpochMillis = analysis.metadata.fetchedAt.toEpochMilli(),
+    )
+
+    private fun transcriptEntity(analysis: CompletedAnalysis, now: Long) = TranscriptEntity(
+        videoId = analysis.transcript.videoId,
+        provider = analysis.transcript.provider,
+        languageCode = analysis.transcript.languageCode,
+        isGenerated = analysis.transcript.isGenerated,
+        segmentsJson = encodeSegments(analysis),
+        plainText = analysis.transcript.segments.joinToString("\n") { it.text },
+        fetchedAtEpochMillis = now,
+    )
+
+    private fun briefingEntity(analysis: CompletedAnalysis, now: Long) = BriefingEntity(
+        videoId = analysis.transcript.videoId,
+        transcriptId = 0,
+        styleNameSnapshot = "Standard",
+        styleInstructionsSnapshot = DEFAULT_STYLE_INSTRUCTIONS,
+        modelSnapshot = analysis.briefing.model,
+        markdown = analysis.briefing.markdown,
+        mapChunkCount = analysis.briefing.mapChunkCount,
+        status = "COMPLETED",
+        errorCode = null,
+        createdAtEpochMillis = now,
+    )
 
     private fun encodeSegments(analysis: CompletedAnalysis): String = JSONArray().apply {
         analysis.transcript.segments.forEach { segment ->

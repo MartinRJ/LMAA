@@ -59,6 +59,14 @@ Bereits verifiziert:
   Video-/Transkript-/Stil-/Modell-Snapshots unveränderlich in Room gespeichert.
 - Die Historie ist nach Kaltstart offline verfügbar; zwei Analysen desselben
   Videos bleiben als getrennte Briefings erhalten.
+- Analyseaufträge werden vor dem ersten Providerrequest in Room gespeichert und
+  durch WorkManager 2.11.2 fortgesetzt. Ein Prozessabbruch während der
+  Briefingphase wurde auf dem Zieltablet mit exakt einem fertigen Historieneintrag
+  erfolgreich wiederaufgenommen.
+- Hoch-/Querformat, System-Dark-Mode und 150-%-Schriftgröße sind auf dem
+  Zieltablet geprüft. Querformat verwendet getrennt scrollbare Arbeits-/Historien-
+  beziehungsweise Aktions-/Markdown-Bereiche; große Schrift fällt kontrolliert
+  auf ein einspaltiges Layout zurück.
 - Umfangreicher Android-Map-Reduce-Smoke mit 7.311 Segmenten und 210.682
   Transkriptzeichen; das fertige Briefing renderte Pflichtstruktur, zahlreiche
   Zeitmarken und Programmierbegriffe mit Inline-Code.
@@ -206,8 +214,10 @@ Android-App
 - Python-/Netzwerkzugriffe nie auf dem Main Thread ausführen.
 - Chaquopy- und Paketinitialisierung, APK-Größe, Kaltstart und Speicherverbrauch
   auf dem Galaxy Tab messen.
-- WorkManager nur für fortsetzbare Aufträge einsetzen; Room speichert den
-  Auftragszustand vor externen Requests.
+- WorkManager 2.11.2 führt fortsetzbare, eindeutig benannte Analyseaufträge mit
+  Netzwerkbedingung und Foreground-Benachrichtigung aus. Room speichert den
+  Auftragszustand vor externen Requests; Ergebnis und erfolgreicher Jobstatus
+  werden in einer Transaktion persistiert.
 
 Chaquopy 17 unterstützt laut Hersteller AGP 7.3–9.2, Python 3.10–3.14 und
 minSdk 24. Das passt formal zu AGP 9.2.1, Python 3.10, minSdk 26 und dem
@@ -286,6 +296,7 @@ Entwicklungs-Smokes, bleiben ignoriert und dürfen nie in die APK gelangen.
 | `Transcript` | `id`, `videoId` (FK), `provider` (`primary`/`rapidapi`), `languageCode`, `isGenerated`, `segmentsJson`, `plainText`, `fetchedAt` |
 | `BriefingStyle` | `id`, `name`, `instructions`, `outputLanguage`, `isActive`, `isBuiltIn`, Zeitstempel |
 | `Briefing` | `id`, `videoId` (FK), Stil-/Modell-Snapshots, `markdown`, `status`, `errorCode`, Zeitstempel |
+| `AnalysisJob` | UUID, kanonische URL, Status, Pipelinephase, Ergebnis-ID oder Fehlercode, Consume-Zeitpunkt, Zeitstempel |
 | `ProviderUsage` | `provider`, `month`, `attempts`, `successes`, letzter technischer Status |
 
 Room-Migrationen benötigen ab Schema-Version 1 einen Migrationstest. Weder
@@ -334,11 +345,17 @@ Room erfolgten ohne neue Analyse.
 
 ### M2 – Android-Integration und Export
 
-- `ACTION_SEND` aus YouTube. **Vorgezogen erfüllt:** Der Link wird übernommen
-  und die Ein-Schritt-Pipeline automatisch gestartet.
-- Markdown teilen und kopieren. **Vorgezogen erfüllt.**
-- Wiederaufnahme nach Activity-/Prozessneustart.
-- Tablet-Layout, Querformat, Dark Mode und große Schrift.
+- `ACTION_SEND` aus YouTube übernimmt den Link und startet die Ein-Schritt-
+  Pipeline automatisch; Share-Events werden genau einmal konsumiert.
+- Markdown teilen und kopieren.
+- Room-persistierter Jobstatus und WorkManager-Wiederaufnahme nach Activity-/
+  Prozessneustart; atomare Ergebnis-/Jobtransaktion verhindert Duplikate.
+- Adaptives Tablet-Layout für Hoch-/Querformat, Dark Mode und große Schrift.
+
+**Status:** erfüllt auf dem Galaxy Tab S7+ unter Android 13. Ein Force-Stop in
+der Briefingphase stellte URL und Phase nach Kaltstart wieder her und erzeugte
+exakt einen neuen Historieneintrag. Foreground-Worker sowie Hoch-/Querformat,
+Dark Mode und 150-%-Schriftgröße wurden auf dem Gerät geprüft.
 
 ### M3 – Stilverwaltung und Fallback-Einstellungen
 
@@ -366,6 +383,9 @@ Room erfolgten ohne neue Analyse.
 - Provideradapter verwenden synthetische Fixtures und MockWebServer.
 - Geräte-Smokes prüfen primäre Transcript-Arten, Shorts, lange Videos,
   Mobilfunk/WLAN, Prozessneustart und Scrollverhalten.
+- Datenbewahrende gezielte Instrumentierung prüft Schema-Migration 1→2,
+  Job-Reopen und atomare Job-/Briefing-Persistenz, ohne die tägliche App-
+  Installation zurückzusetzen.
 - Architekturtest stellt sicher, dass kein LMAA-eigener Host kontaktiert wird.
 - Fallback-Wahrheitstabelle prüft Opt-in, Key, zulässigen Primärfehler und exakt
   einen RapidAPI-Aufruf.
@@ -385,7 +405,7 @@ Room erfolgten ohne neue Analyse.
 | RapidAPI-Quote erschöpft | primär lokaler Abruf, Opt-in, kein Retry bei 429, lokaler Zähler und Dashboardwarnung |
 | Sehr lange Transkripte | deterministisches Chunking, Map-Reduce, Abbruch/Wiederaufnahme |
 | Prompt Injection oder schädliches Markdown | Daten delimitieren, keine Modell-Tools, HTML nicht ausführen, Links strikt begrenzen |
-| Android beendet den Prozess | Auftrag und Zwischenstatus zuerst in Room persistieren, WorkManager nur bei Bedarf |
+| Android beendet den Prozess | Auftrag und Zwischenstatus zuerst in Room persistieren; eindeutiger WorkManager-Auftrag, Foreground-Ausführung und atomare Ergebnistransaktion |
 
 ## 8. Primärquellen
 
@@ -399,6 +419,9 @@ Room erfolgten ohne neue Analyse.
 - [AndroidX DataStore – Tink-Verschlüsselungsmodul](https://developer.android.com/jetpack/androidx/releases/datastore)
 - [Android – sensible Daten aus Backups ausschließen](https://developer.android.com/privacy-and-security/risks/backup-best-practices)
 - [AndroidX Room – stabile Version 2.8.4](https://developer.android.com/jetpack/androidx/releases/room)
+- [AndroidX WorkManager – stabile Version 2.11.2](https://developer.android.com/jetpack/androidx/releases/work)
+- [Android – persistente Arbeit mit WorkManager](https://developer.android.com/develop/background-work/background-tasks/persistent)
+- [Android – langlebige Worker](https://developer.android.com/develop/background-work/background-tasks/persistent/how-to/long-running)
 - [Kotlin Symbol Processing – offizieller Quickstart](https://kotlinlang.org/docs/ksp-quickstart.html)
 - [OpenAI API – Authentifizierung und Client-Key-Warnung](https://developers.openai.com/api/reference/overview)
 - [OpenAI – gpt-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)

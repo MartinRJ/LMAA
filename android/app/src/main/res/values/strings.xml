@@ -20,10 +20,13 @@
     <string name="analysis_metadata">Transkript geladen · Metadaten werden abgerufen…</string>
     <string name="analysis_briefing">Briefing wird mit gpt-5.6-sol erstellt…</string>
     <string name="analysis_persisting">Briefing wird lokal gespeichert…</string>
+    <string name="analysis_notification_channel">Laufende Briefing-Analysen</string>
+    <string name="analysis_notification_title">LMAA erstellt ein Briefing</string>
     <string name="cancel_analysis">Analyse abbrechen</string>
     <string name="analysis_error">Analyse fehlgeschlagen: %1$s</string>
     <string name="openai_key_missing">Bitte zuerst einen OpenAI API-Key speichern.</string>
     <string name="local_save_error">Das Briefing konnte nicht in der lokalen Historie gespeichert werden.</string>
+    <string name="local_job_error">Der lokale Analyseauftrag konnte nicht gestartet werden.</string>
     <string name="no_transcript_available">Für dieses Video sind keine verwendbaren Untertitel verfügbar.</string>
     <string name="briefing_detail_title">Briefing</string>
     <string name="briefing_detail_model">Modell: %1$s · Transkript: %2$s</string>

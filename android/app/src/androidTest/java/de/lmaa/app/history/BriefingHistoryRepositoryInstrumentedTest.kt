@@ -17,6 +17,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -59,6 +60,32 @@ class BriefingHistoryRepositoryInstrumentedTest {
         assertEquals("Erstes Briefing", restored?.markdown)
         assertEquals("Testvideo", restored?.title)
         assertEquals("https://www.youtube.com/watch?v=Rq5iOD-mcEI", restored?.canonicalUrl)
+        database.close()
+    }
+
+    @Test
+    fun completedAnalysis_andJobCompletion_areCommittedAtomically() = runBlocking {
+        val database = openDatabase()
+        val jobs = AnalysisJobRepository(database.analysisJobDao())
+        val history = BriefingHistoryRepository(database.briefingDao())
+        val job = jobs.create("https://www.youtube.com/watch?v=Rq5iOD-mcEI")
+
+        val stored = history.saveForJob(job.jobId, analysis("Atomarer Abschluss"))
+
+        val completedJob = jobs.find(job.jobId)
+        assertEquals(AnalysisJobStatus.SUCCEEDED, completedJob?.status)
+        assertEquals(stored.briefingId, completedJob?.briefingId)
+        assertEquals("Atomarer Abschluss", history.find(stored.briefingId)?.markdown)
+
+        var duplicateRejected = false
+        try {
+            history.saveForJob(job.jobId, analysis("Unzulässiges Duplikat"))
+        } catch (_: IllegalStateException) {
+            duplicateRejected = true
+        }
+        assertTrue(duplicateRejected)
+        assertEquals(1, history.history.first().size)
+        assertEquals("Atomarer Abschluss", history.find(stored.briefingId)?.markdown)
         database.close()
     }
 

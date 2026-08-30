@@ -12,14 +12,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.LocalActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -28,6 +31,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -45,11 +50,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import de.lmaa.app.secrets.ProviderSecretStore
+import de.lmaa.app.history.AnalysisJob
+import de.lmaa.app.history.AnalysisJobRepository
+import de.lmaa.app.history.AnalysisJobStatus
 import de.lmaa.app.history.BriefingHistoryItem
 import de.lmaa.app.history.BriefingHistoryRepository
 import de.lmaa.app.history.LmaaDatabase
@@ -57,9 +66,7 @@ import de.lmaa.app.history.StoredBriefing
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,7 +80,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         acceptShareIntent(intent)
         setContent {
-            MaterialTheme {
+            MaterialTheme(
+                colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) {
+                    darkColorScheme()
+                } else {
+                    lightColorScheme()
+                },
+            ) {
                 val context = LocalContext.current.applicationContext
                 var secretStoreState by remember {
                     mutableStateOf<SecretStoreUiState>(SecretStoreUiState.Loading)
@@ -89,13 +102,15 @@ class MainActivity : ComponentActivity() {
                         SecretStoreUiState.Error
                     }
                 }
+                val database = remember(context) { LmaaDatabase.getInstance(context) }
                 LmaaApp(
-                    transcriptProvider = LocalTranscriptProvider(context),
-                    historyRepository = remember(context) {
-                        BriefingHistoryRepository(
-                            LmaaDatabase.getInstance(context).briefingDao(),
-                        )
+                    historyRepository = remember(database) {
+                        BriefingHistoryRepository(database.briefingDao())
                     },
+                    analysisJobRepository = remember(database) {
+                        AnalysisJobRepository(database.analysisJobDao())
+                    },
+                    workScheduler = remember(context) { AnalysisWorkScheduler(context) },
                     secretStoreState = secretStoreState,
                     incomingShare = incomingShare.value,
                     onShareConsumed = { sequence ->
@@ -129,27 +144,39 @@ private data class IncomingShare(val sequence: Long, val text: String)
 
 @Composable
 private fun LmaaApp(
-    transcriptProvider: TranscriptProvider,
     historyRepository: BriefingHistoryRepository,
+    analysisJobRepository: AnalysisJobRepository,
+    workScheduler: AnalysisWorkScheduler,
     secretStoreState: SecretStoreUiState,
     incomingShare: IncomingShare?,
     onShareConsumed: (Long) -> Unit,
 ) {
+    var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     var detail by remember { mutableStateOf<StoredBriefing?>(null) }
-    HandleSystemBack(enabled = detail != null) { detail = null }
+    LaunchedEffect(detailId) {
+        val id = detailId
+        detail = if (id == null) null else historyRepository.find(id)
+    }
+    HandleSystemBack(enabled = detailId != null) { detailId = null }
 
     val currentDetail = detail
-    if (currentDetail == null) {
+    if (detailId == null) {
         LmaaHomeScreen(
-            transcriptProvider = transcriptProvider,
             historyRepository = historyRepository,
+            analysisJobRepository = analysisJobRepository,
+            workScheduler = workScheduler,
             secretStoreState = secretStoreState,
             incomingShare = incomingShare,
             onShareConsumed = onShareConsumed,
-            onBriefingReady = { detail = it },
+            onBriefingReady = {
+                detail = it
+                detailId = it.briefingId
+            },
         )
+    } else if (currentDetail != null) {
+        BriefingDetailScreen(currentDetail, onBack = { detailId = null })
     } else {
-        BriefingDetailScreen(currentDetail, onBack = { detail = null })
+        CircularProgressIndicator()
     }
 }
 
@@ -171,34 +198,36 @@ private fun HandleSystemBack(enabled: Boolean, onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LmaaHomeScreen(
-    transcriptProvider: TranscriptProvider,
     historyRepository: BriefingHistoryRepository,
+    analysisJobRepository: AnalysisJobRepository,
+    workScheduler: AnalysisWorkScheduler,
     secretStoreState: SecretStoreUiState,
     incomingShare: IncomingShare?,
     onShareConsumed: (Long) -> Unit,
     onBriefingReady: (StoredBriefing) -> Unit,
 ) {
     var input by rememberSaveable { mutableStateOf("") }
-    var analysisState by remember { mutableStateOf<AnalysisUiState>(AnalysisUiState.Idle) }
-    var analysisJob by remember { mutableStateOf<Job?>(null) }
-    val metadataProvider = remember { YoutubeOEmbedMetadataProvider() }
+    var localErrorCode by rememberSaveable { mutableStateOf<String?>(null) }
+    var enqueueInProgress by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val history by historyRepository.history.collectAsState(initial = emptyList())
+    val currentJob by analysisJobRepository.current.collectAsState(initial = null)
+    val analysisState = analysisUiState(currentJob, localErrorCode, enqueueInProgress)
 
     fun startAnalysis(rawInput: String) {
-        analysisJob?.cancel()
+        if (enqueueInProgress) return
         input = rawInput
-        analysisState = AnalysisUiState.Loading(AnalysisStage.TRANSCRIPT)
-        analysisJob = coroutineScope.launch {
+        localErrorCode = null
+        enqueueInProgress = true
+        coroutineScope.launch {
             val parsed = YoutubeUrlParser.parse(rawInput)
             if (parsed !is YoutubeUrlParseResult.Success) {
-                analysisState = AnalysisUiState.Error(
-                    when (parsed) {
-                        YoutubeUrlParseResult.Error.EMPTY -> "URL_EMPTY"
-                        YoutubeUrlParseResult.Error.INVALID -> "URL_INVALID"
-                        YoutubeUrlParseResult.Error.AMBIGUOUS -> "URL_AMBIGUOUS"
-                    },
-                )
+                localErrorCode = when (parsed) {
+                    YoutubeUrlParseResult.Error.EMPTY -> "URL_EMPTY"
+                    YoutubeUrlParseResult.Error.INVALID -> "URL_INVALID"
+                    YoutubeUrlParseResult.Error.AMBIGUOUS -> "URL_AMBIGUOUS"
+                }
+                enqueueInProgress = false
                 return@launch
             }
 
@@ -209,40 +238,60 @@ private fun LmaaHomeScreen(
                 false
             }
             if (store == null || !hasOpenAiKey) {
-                analysisState = AnalysisUiState.Error("OPENAI_KEY_MISSING")
+                localErrorCode = "OPENAI_KEY_MISSING"
+                enqueueInProgress = false
                 return@launch
             }
-
-            val pipeline = BriefingPipeline(
-                transcriptProvider = transcriptProvider,
-                metadataProvider = metadataProvider,
-                briefingCreator = BriefingService(OpenAiBriefingTextGenerator(store)),
-            )
-            try {
-                when (
-                    val result = pipeline.analyze(rawInput) { stage ->
-                        analysisState = AnalysisUiState.Loading(stage)
-                    }
-                ) {
-                    is AnalysisResult.Success -> {
-                        analysisState = AnalysisUiState.Loading(AnalysisStage.PERSISTING)
-                        val stored = try {
-                            historyRepository.save(result.analysis)
-                        } catch (_: Exception) {
-                            analysisState = AnalysisUiState.Error("LOCAL_SAVE_ERROR")
-                            return@launch
-                        }
-                        analysisState = AnalysisUiState.Idle
-                        onBriefingReady(stored)
-                    }
-                    is AnalysisResult.Failure -> analysisState = AnalysisUiState.Error(result.code)
-                }
-            } catch (exception: CancellationException) {
-                throw exception
+            currentJob?.takeIf { !it.status.isTerminal }?.let {
+                workScheduler.cancel(analysisJobRepository, it.jobId)
+            }
+            currentJob?.takeIf { it.status.isTerminal }?.let {
+                analysisJobRepository.consumeResult(it.jobId)
+            }
+            val job = try {
+                analysisJobRepository.create(parsed.canonicalUrl)
             } catch (_: Exception) {
-                analysisState = AnalysisUiState.Error("BRIEFING_PIPELINE_ERROR")
+                localErrorCode = "LOCAL_JOB_ERROR"
+                enqueueInProgress = false
+                return@launch
+            }
+            try {
+                workScheduler.enqueue(job.jobId)
+            } catch (_: Exception) {
+                analysisJobRepository.markFailed(job.jobId, "LOCAL_SCHEDULER_ERROR")
+            } finally {
+                enqueueInProgress = false
             }
         }
+    }
+
+    LaunchedEffect(analysisJobRepository, workScheduler) {
+        try {
+            workScheduler.reconcile(analysisJobRepository)
+        } catch (_: Exception) {
+            localErrorCode = "LOCAL_SCHEDULER_ERROR"
+        }
+    }
+
+    LaunchedEffect(currentJob?.jobId, currentJob?.status) {
+        val job = currentJob
+        if (job?.status == AnalysisJobStatus.SUCCEEDED && job.briefingId != null) {
+            val stored = try {
+                historyRepository.find(job.briefingId)
+            } catch (_: Exception) {
+                null
+            }
+            if (stored == null) {
+                localErrorCode = "BRIEFING_NOT_FOUND"
+            } else {
+                analysisJobRepository.consumeResult(job.jobId)
+                onBriefingReady(stored)
+            }
+        }
+    }
+
+    LaunchedEffect(currentJob?.jobId) {
+        currentJob?.takeIf { !it.status.isTerminal }?.let { input = it.canonicalUrl }
     }
 
     LaunchedEffect(incomingShare?.sequence, secretStoreState) {
@@ -260,15 +309,16 @@ private fun LmaaHomeScreen(
             input = input,
             onInputChanged = {
                 input = it
-                if (analysisState !is AnalysisUiState.Loading) {
-                    analysisState = AnalysisUiState.Idle
+                localErrorCode = null
+                currentJob?.takeIf { job -> job.status.isTerminal }?.let { job ->
+                    coroutineScope.launch { analysisJobRepository.consumeResult(job.jobId) }
                 }
             },
             onAnalyze = { startAnalysis(input) },
             onCancelAnalysis = {
-                analysisJob?.cancel()
-                analysisJob = null
-                analysisState = AnalysisUiState.Idle
+                currentJob?.let { job ->
+                    coroutineScope.launch { workScheduler.cancel(analysisJobRepository, job.jobId) }
+                }
             },
             secretStoreState = secretStoreState,
             analysisState = analysisState,
@@ -281,7 +331,7 @@ private fun LmaaHomeScreen(
                         null
                     }
                     if (stored == null) {
-                        analysisState = AnalysisUiState.Error("BRIEFING_NOT_FOUND")
+                        localErrorCode = "BRIEFING_NOT_FOUND"
                     } else {
                         onBriefingReady(stored)
                     }
@@ -289,6 +339,30 @@ private fun LmaaHomeScreen(
             },
             contentPadding = contentPadding,
         )
+    }
+}
+
+private val AnalysisJobStatus.isTerminal: Boolean
+    get() = this == AnalysisJobStatus.SUCCEEDED ||
+        this == AnalysisJobStatus.FAILED ||
+        this == AnalysisJobStatus.CANCELLED
+
+private fun analysisUiState(
+    job: AnalysisJob?,
+    localErrorCode: String?,
+    enqueueInProgress: Boolean,
+): AnalysisUiState {
+    if (localErrorCode != null) return AnalysisUiState.Error(localErrorCode)
+    if (enqueueInProgress) return AnalysisUiState.Loading(AnalysisStage.TRANSCRIPT)
+    return when (job?.status) {
+        AnalysisJobStatus.ENQUEUED,
+        AnalysisJobStatus.RUNNING,
+        -> AnalysisUiState.Loading(job.stage ?: AnalysisStage.TRANSCRIPT)
+        AnalysisJobStatus.FAILED -> AnalysisUiState.Error(job.errorCode ?: "BRIEFING_PIPELINE_ERROR")
+        AnalysisJobStatus.SUCCEEDED,
+        AnalysisJobStatus.CANCELLED,
+        null,
+        -> AnalysisUiState.Idle
     }
 }
 
@@ -304,14 +378,77 @@ private fun HomeContent(
     onOpenHistory: (Long) -> Unit,
     contentPadding: PaddingValues,
 ) {
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(contentPadding),
     ) {
+        val fontScale = LocalDensity.current.fontScale
+        if (AdaptiveLayoutPolicy.useTwoPane(maxWidth.value, fontScale)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    HomePrimaryContent(
+                        input = input,
+                        onInputChanged = onInputChanged,
+                        onAnalyze = onAnalyze,
+                        onCancelAnalysis = onCancelAnalysis,
+                        secretStoreState = secretStoreState,
+                        analysisState = analysisState,
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    HistoryContent(history, onOpenHistory)
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                HomePrimaryContent(
+                    input = input,
+                    onInputChanged = onInputChanged,
+                    onAnalyze = onAnalyze,
+                    onCancelAnalysis = onCancelAnalysis,
+                    secretStoreState = secretStoreState,
+                    analysisState = analysisState,
+                )
+                Spacer(Modifier.height(8.dp))
+                HistoryContent(history, onOpenHistory)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomePrimaryContent(
+    input: String,
+    onInputChanged: (String) -> Unit,
+    onAnalyze: () -> Unit,
+    onCancelAnalysis: () -> Unit,
+    secretStoreState: SecretStoreUiState,
+    analysisState: AnalysisUiState,
+) {
         Text(
             text = stringResource(R.string.app_title),
             style = MaterialTheme.typography.headlineMedium,
@@ -356,9 +493,14 @@ private fun HomeContent(
                 style = MaterialTheme.typography.bodyLarge,
             )
         }
+}
 
-        Spacer(Modifier.height(8.dp))
-        Text(
+@Composable
+private fun HistoryContent(
+    history: List<BriefingHistoryItem>,
+    onOpenHistory: (Long) -> Unit,
+) {
+    Text(
             text = stringResource(R.string.history_title),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
@@ -379,7 +521,6 @@ private fun HomeContent(
         } else {
             history.forEach { item -> HistoryItem(item, onOpenHistory) }
         }
-    }
 }
 
 @Composable
@@ -449,14 +590,58 @@ private fun BriefingDetailScreen(
             )
         },
     ) { contentPadding ->
-        Column(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(contentPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(contentPadding),
         ) {
+            val useTwoPane = AdaptiveLayoutPolicy.useTwoPane(
+                maxWidth.value,
+                LocalDensity.current.fontScale,
+            )
+            if (useTwoPane) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = 380.dp)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        BriefingSummary(context, briefing)
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                    ) {
+                        SafeMarkdown(briefing.markdown)
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 24.dp, vertical = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    BriefingSummary(context, briefing)
+                    SafeMarkdown(briefing.markdown)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BriefingSummary(context: Context, briefing: StoredBriefing) {
             Text(
                 text = briefing.title,
                 style = MaterialTheme.typography.headlineMedium,
@@ -480,23 +665,18 @@ private fun BriefingDetailScreen(
             ) {
                 Text(stringResource(R.string.open_youtube_video))
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { copyMarkdown(context, briefing.markdown) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.copy_markdown))
-                }
-                OutlinedButton(
-                    onClick = { shareMarkdown(context, briefing.markdown) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.share_briefing))
-                }
+            OutlinedButton(
+                onClick = { copyMarkdown(context, briefing.markdown) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.copy_markdown))
             }
-            SafeMarkdown(briefing.markdown)
-        }
-    }
+            OutlinedButton(
+                onClick = { shareMarkdown(context, briefing.markdown) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.share_briefing))
+            }
 }
 
 private fun openCanonicalVideo(context: Context, canonicalUrl: String) {
@@ -528,6 +708,7 @@ private fun analysisErrorMessage(code: String): String = when (code) {
     "URL_AMBIGUOUS" -> stringResource(R.string.url_error_ambiguous)
     "OPENAI_KEY_MISSING" -> stringResource(R.string.openai_key_missing)
     "LOCAL_SAVE_ERROR" -> stringResource(R.string.local_save_error)
+    "LOCAL_JOB_ERROR", "LOCAL_SCHEDULER_ERROR" -> stringResource(R.string.local_job_error)
     "TRANSCRIPTS_DISABLED", "NO_TRANSCRIPT_FOUND" ->
         stringResource(R.string.no_transcript_available)
     else -> stringResource(R.string.analysis_error, code)

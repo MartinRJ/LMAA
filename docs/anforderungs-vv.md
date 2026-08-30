@@ -37,12 +37,13 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
 | MET-001 | Titel, Kanalname und Thumbnail über oEmbed | **validiert**; genügt dem MVP ohne zusätzlichen Key | **erfüllt**; MockWebServer-Verträge und realer Android-oEmbed-Pfad bestanden, weitere Felder bleiben nullable | Regression in M1 |
 | AIG-001 | Briefing mit exakt `gpt-5.6-sol`, ohne Modellfallback | **validiert**; Modell und Responses-Endpunkt existieren und wurden praktisch erreicht | **erfüllt für M0**; kurzer und umfangreicher direkter Android-Pfad mit `store=false`, leerer Toolliste, Map-Reduce, allen Pflichtüberschriften, Zeitmarken und Inline-Code bestanden | weitere repräsentative Inhalte in M1/M4 evaluieren |
 | SEC-001 | Persönliches BYOK; kein Secret in APK, Git, Logs oder Backup | **bedingt validiert**; Proto DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset erfüllt das lokale Bedrohungsmodell, direkter Client-Key bleibt ein Restrisiko | **erfüllt für M0**; Ciphertext-/Keystore-Instrumentierung, No-Backup-Regeln, Kaltstart, `****`, leeres Ersetzen sowie APK-/Git-Scan bestanden | M3 verschiebt Keyverwaltung in eigene Settings-View; Restrisiko bleibt akzeptierte Ausnahme |
-| DAT-001 | Historie und Snapshots lokal in Room | **validiert** | **erfüllt**; Room 2.8.4, exportiertes Schema 1, normalisierte Video-/Transkript-/Briefing-Daten, getrennte immutable Briefings, Datenbank-Reopen-Test und realer Kaltstart-/Offline-Smoke bestanden | jede folgende Schemaänderung mit Migration und Migrationstest |
+| DAT-001 | Historie, Snapshots und Analyseaufträge lokal in Room | **validiert** | **erfüllt**; Room 2.8.4, exportiertes Schema 2, validierte Migration 1→2, normalisierte Daten, persistente Jobs, getrennte immutable Briefings, Reopen-Tests und reale Kaltstart-/Offline-Smokes bestanden | jede folgende Schemaänderung mit Migration und Migrationstest |
 | UI-001 | Sicheres, langes Markdown einschließlich Code | **validiert** | **erfüllt**; Parsertests und Zielgerät-Smokes bestanden | Regressionstests fortführen |
-| UX-001 | Linkprüfung, Transkript und Briefing sind eine Nutzeraktion | **validiert**; entspricht dem täglichen „informiert statt ansehen“-Workflow | **erfüllt**; Direkteingabe besitzt einen Analyse-Button, `ACTION_SEND` startet denselben Orchestrator automatisch | Prozesswiederaufnahme in M2 |
-| UI-002 | Briefing erscheint in einem eigenen View | **validiert** | **erfüllt**; eigener scrollbarer Detail-View mit System-Zurück, Video, Kopieren und Teilen live geprüft | Tablet-Layoutvarianten in M2 |
+| UX-001 | Linkprüfung, Transkript und Briefing sind eine Nutzeraktion | **validiert**; entspricht dem täglichen „informiert statt ansehen“-Workflow | **erfüllt**; Direkteingabe besitzt einen Analyse-Button, `ACTION_SEND` startet denselben Orchestrator automatisch; Room/WorkManager stellen laufende Aufträge nach Prozessabbruch wieder her | Regression in M4 |
+| UI-002 | Briefing erscheint in einem eigenen View | **validiert** | **erfüllt**; eigener Detail-View mit System-Zurück, Video, Kopieren und Teilen; Hoch-/Querformat, getrennte Scrollbereiche, Dark Mode und 150-%-Schrift live geprüft | Regression in M4 |
 | INT-001 | LMAA ist installiertes `text/plain`-Share-Ziel für YouTube | **validiert** | **erfüllt**; PackageManager listet `de.lmaa.app/.MainActivity`; reale Shares und der manuelle Nutzer-Smoke direkt aus dem Samsung-/YouTube-Sharesheet führten ohne Folgeklick zum Briefing; Consume-once verhindert Wiederholung | Regression in M2/M4 |
-| TST-001 | Tests dürfen tägliche BYOK-/Historiedaten nicht zerstören | **validiert**; persönliche App-Daten sind produktive Stakeholderdaten | **Abweichung gefunden**; Gradle UTP ersetzte einmal Debug-App-Daten, lokale Key-Dateien blieben intakt und der Nutzer gab den Key erneut ein | isolierte Test-Application-ID oder datenbewahrende gezielte Instrumentation vor dem nächsten Gerätelauf |
+| TST-001 | Tests dürfen tägliche BYOK-/Historiedaten nicht zerstören | **validiert**; persönliche App-Daten sind produktive Stakeholderdaten | **erfüllt für M2**; `adb install -r` plus gezielte Instrumentierung statt UTP erhielten BYOK-Maske und vier Historieneinträge; Migration und Persistenztests bestanden | isolierte Test-Application-ID bleibt M4-Härtung |
+| RES-001 | Laufende Analyse übersteht Activity-/Prozessneustart ohne doppeltes Briefing | **validiert**; umfangreiche Modellläufe dürfen nicht an eine sichtbare Activity gekoppelt sein | **erfüllt**; persistenter Room-Job, eindeutige WorkManager-Arbeit, Foreground-Ausführung und atomare Ergebnistransaktion; Force-Stop in `BRIEFING` wurde zu exakt einem neuen Eintrag fortgesetzt | Reboot-/Doze-Regression in M4 |
 | COST-001 | Kein eigener Server; RapidAPI meist innerhalb Basic/Free | **validiert**; eigener Server entfällt, RapidAPI bleibt Ausnahme | **erfüllt für M0**; Hauptpfad und semantischer Short-Fehler benötigen keinen Server und keinen RapidAPI-Aufruf; Adapter hat keinen automatischen Retry | M3 ergänzt lokalen Monatszähler |
 
 ## Machbarkeitsprüfung des lokalen Transkriptpfads
@@ -68,9 +69,9 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
   manuelle und automatisch erzeugte deutsche/englische Transkripte.
 - Ein langes Transkript mit 7.311 Segmenten und 210.682 Zeichen überquerte die
   Python/Kotlin-Bridge erfolgreich; die Debug-APK ist rund 27,8 MB groß.
-- Shorts mit und ohne Captions sind explizit verifiziert. Detaillierte
-  Laufzeit-/Speichermessung und Prozessneustart während eines Abrufs bleiben
-  offen.
+- Shorts mit und ohne Captions sowie die Prozesswiederaufnahme während der
+  Briefingphase sind explizit verifiziert. Detaillierte Laufzeit-/
+  Speichermessung bleibt offen.
 
 ## Zielkonflikt: serverloser MVP und OpenAI-Key
 
@@ -132,8 +133,9 @@ und atomisches Löschen; ein Kaltstart-Smoke belegt die persistente `****`-Maske
    Ersetzungsfeld und atomisches Löschen ohne Klartextwiederanzeige.
 8. **Erfüllt und fortlaufend:** APK-, Git- und Log-Scan findet weder lokalen Testkey noch bekannte
    Key-Präfixe; Backupregeln schließen Secret-/Room-Dateien aus.
-9. **Teilweise erfüllt:** App-Neustart erhält fertige Briefings lokal; die
-   Wiederaufnahme eines laufenden Auftrags nach Prozessabbruch bleibt M2.
+9. **Erfüllt:** App-Neustart erhält fertige Briefings lokal; Room und
+   WorkManager nehmen einen laufenden Auftrag nach Prozessabbruch wieder auf,
+   ohne einen doppelten Historieneintrag zu erzeugen.
 
 ## Historische Abweichung
 
