@@ -58,11 +58,12 @@ Bereits verifiziert:
   Zeitmarken und Programmierbegriffe mit Inline-Code.
 - RapidAPI-Testzähler: 3 von 100 Requests, konservativ 97 verbleibend.
 
-Noch nicht verifiziert und damit für den vollständigen M0-Abschluss offen:
-
-- Explizit als YouTube Short identifizierter Geräte-Smoke.
-- Android-RapidAPI-Fallbackvertrag mit MockWebServer-Wahrheitstabelle; ein
-  weiterer realer RapidAPI-Aufruf ist dafür nicht erforderlich.
+M0 ist abgeschlossen. Der explizite Short `engQjz-Lm54` wurde auf dem Tablet
+korrekt kanonisiert und lieferte kontrolliert `TRANSCRIPTS_DISABLED`; wegen
+eindeutig fehlender Captions wurde RapidAPI nicht ausgelöst. Der Android-
+Fallbackadapter und die Wahrheitstabelle sind vollständig mit MockWebServer
+verifiziert. Ein erfolgreicher Short mit aktivem CC bleibt ein sinnvoller
+Regressionstest, blockiert die technische M0-Abnahme aber nicht.
 
 Die detaillierte Anforderungsprüfung und Nachweismatrix steht in
 [`docs/anforderungs-vv.md`](docs/anforderungs-vv.md).
@@ -299,6 +300,10 @@ Provider-Keys noch vollständige Providerantworten gehören in Room.
 ohne PC und ohne LMAA-Server ein Briefing aus einem lokal abgerufenen Transkript.
 Netzwerk- und Adaptertests belegen, dass RapidAPI bei erfolgreichem Primärpfad
 nicht aufgerufen wird. Kein Secret befindet sich in APK, Git oder Backup.
+
+**Status:** erfüllt. Zusätzlich belegt ein expliziter Short-Smoke die
+kontrollierte Fehlerbehandlung ohne unnötigen Fallback; RapidAPI-Stand bleibt
+3/100.
 
 ### M1 – Persistenter vertikaler Happy Path
 

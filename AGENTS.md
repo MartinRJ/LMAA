@@ -92,7 +92,7 @@ Keine geschätzten Prozentwerte verwenden.
 | Milestone | Status | Letzte Änderung | Nachweis / nächster Schritt |
 |---|---|---:|---|
 | Planung und Research | erledigt | 2026-08-30 | Anforderungen auf autonome Tablet-App korrigiert; V&V-Matrix und Primärquellen dokumentiert. |
-| M0 – Lokale Laufzeit und Spikes | in Arbeit | 2026-08-30 | Vollständiger lokaler Android-Pfad einschließlich BYOK, oEmbed und `gpt-5.6-sol` ist auf dem Tablet verifiziert; offen sind expliziter Short-Smoke und Android-RapidAPI-Mockvertrag. |
+| M0 – Lokale Laufzeit und Spikes | erledigt | 2026-08-30 | Vollständiger Android-Pfad, BYOK, oEmbed/OpenAI, kurzer/langer/Short-Gerätesmoke und Android-RapidAPI-Mockvertrag sind verifiziert. |
 | M1 – Persistenter Happy Path | offen | 2026-08-30 | Lokales Transkript bis Room-persistierter Markdown-Detailansicht. |
 | M2 – Share und Export | offen | 2026-08-29 | Share-Intent, Copy/Share und Wiederaufnahme. |
 | M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Stil-CRUD, Snapshots, Keystore-Key-UX und RapidAPI-Zähler. |
@@ -210,8 +210,8 @@ Android-Produktarchitektur.
 - Toolchainbefund: Chaquopy 17 ist nicht mit Gradles Configuration Cache
   kompatibel; dieser ist projektweit deaktiviert, normale Build-Caches und
   Parallelisierung bleiben aktiv. Die Debug-APK ist rund 27,8 MB groß.
-- Offen: direkter Android-oEmbed-/OpenAI-Pfad, BYOK-Secret-Store, expliziter
-  YouTube-Short-Nachweis und vollständiger M0-Briefingpfad.
+- Offen: in diesem damaligen Zwischenstand waren oEmbed/OpenAI, BYOK und Short
+  noch offen; die nachfolgenden M0-Nachweise haben diese Punkte geschlossen.
 - RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
 
 ### 2026-08-30 – BYOK, oEmbed und direkter OpenAI-Pfad auf Android verifiziert
@@ -234,12 +234,38 @@ Android-Produktarchitektur.
   oEmbed und reale Briefings mit exakt `gpt-5.6-sol`, allen
   Pflichtüberschriften, Zeitmarken und Inline-Code. Keine
   AndroidRuntime-Exception.
-- Offen/Blocker: expliziter YouTube-Short-Smoke und Android-RapidAPI-
-  MockWebServer-Wahrheitstabelle; Room-Persistenz beginnt in M1.
+- Offen/Blocker: in diesem Zwischenstand waren Short-Smoke und Android-
+  RapidAPI-Mockvertrag noch offen; beide wurden im folgenden M0-Abschluss
+  verifiziert. Room-Persistenz beginnt in M1.
 - Relevante Entscheidung: stabiles Proto DataStore mit eigenem AEAD-Serializer
   statt des Alpha-Moduls `datastore-tink`; kein Klartext- oder
   SharedPreferences-Fallback.
 - RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
+
+### 2026-08-30 – M0 mit Short- und Android-Fallbacknachweis abgeschlossen
+
+- Milestone/Scope: M0, TRN-001, FAL-001 und COST-001.
+- Validierte Anforderung: Shorts werden über denselben lokalen Primärprovider
+  kontrolliert verarbeitet; RapidAPI bleibt ausschließlich Opt-in-Fallback für
+  geeignete technische Primärfehler und verbraucht bei semantischen Fehlern
+  keine Quote.
+- Umgesetzt: Android-`TranscriptProvider`-Vertrag,
+  `RapidApiTranscriptProvider` mit festem HTTPS-Host und sensitiven Headern
+  sowie `TranscriptFallbackResolver` mit geschlossener Fehler-Whitelist.
+- Verifiziert mit: 22 Android-JVM-Tests, darunter MockWebServer-Verträge und
+  vollständige Fallback-Wahrheitstabelle; Gradle
+  `testDebugUnitTest assembleDebug lintDebug` bestanden.
+- Manuell/ADB-geprüft auf Galaxy Tab S7+ 5G, Android 13: Der explizite Short
+  `engQjz-Lm54` wurde aus `/shorts/` kanonisiert und lieferte kontrolliert
+  `TRANSCRIPTS_DISABLED`. RapidAPI wurde regelkonform nicht aufgerufen. Ein
+  erfolgreicher Short mit aktivem CC bleibt ein ergänzender Regressionstest,
+  ist aber kein M0-Abnahmeblocker.
+- Offen/Blocker: keine für M0. Als Nächstes M1 mit Room-persistiertem Happy Path.
+- Relevante Entscheidung: Fallback nur für `REQUEST_BLOCKED` und
+  `REQUEST_FAILED`; kein Fallback für fehlende/gesperrte Captions, ungültige
+  IDs, nicht verfügbare Videos, interne App-Fehler oder Abbruch; kein Retry bei
+  HTTP 429.
+- RapidAPI: kein Live-Aufruf; Entwicklungsstand unverändert 3/100.
 
 ## Vorlage für Fortschrittseinträge
 
