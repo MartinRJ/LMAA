@@ -37,29 +37,39 @@ Server-, Cloud- oder Pro-Ausbaustufen dürfen diesen Pfad nicht verdrängen.
 7. Die direkte OpenAI-Nutzung ist eine auf den persönlichen Sideload-MVP
    begrenzte Sicherheitsausnahme. Kein Key darf in APK, Git, Ressourcen,
    `BuildConfig`, Logs, Screenshots, Fixtures oder Telemetrie erscheinen.
-8. RapidAPI ist standardmäßig aus und ausschließlich ein nachgelagerter
-   Fallback nach geeigneten technischen Fehlern des lokalen Primärproviders.
-   Tests verwenden MockWebServer; reale Aufrufe nur bei diagnostischem Bedarf.
-9. Jede RapidAPI-Anfrage wird lokal technisch gezählt. Aktueller
-   Entwicklungsstand: 3 Versuche/3 Erfolge. Die App kennt den Tarif nicht;
+8. RapidAPI ist eine frei konfigurierbare, standardmäßig ausgeschaltete
+   Transkriptquelle mit den Modi `Aus`, `Nur als Fallback` und `RapidAPI
+   bevorzugt`. Provider werden nie parallel aufgerufen; ein technischer Fehler
+   darf genau einen Aufruf des jeweils anderen Providers auslösen.
+9. RapidAPI-Profile sind deklarativ: ausschließlich HTTPS auf
+   `*.p.rapidapi.com`, GET/POST, begrenzte Query-/Header-/Body-Templates,
+   Erfolgsstatuscodes, Timeouts und Antwortlimit. Unterstützte Platzhalter sind
+   `{{canonical_url}}`, `{{video_id}}`, `{{language}}` und
+   `{{rapidapi_key}}`; der Key darf nur vollständiger Wert von
+   `X-RapidAPI-Key` sein. cURL wird nur eingeschränkt geparst und nie ausgeführt.
+10. RapidAPI-Antworten nicht providerspezifisch deserialisieren. Nach
+    Transport-, Status-, Content-Type-, UTF-8- und Größenprüfung den kompletten
+    Body inhaltlich unverändert als UNTRUSTED-Block an OpenAI übergeben.
+11. Jede RapidAPI-Anfrage wird lokal technisch gezählt. Aktueller
+    Entwicklungsstand: 5 Versuche/5 Erfolge. Die App kennt den Tarif nicht;
    `/100` und der daraus berechnete Restwert sind ausschließlich als
    Basic-Tarif-Hinweis zu kennzeichnen, das Dashboard ist maßgeblich.
-10. Der Code unter `backend/` ist ein Referenz- und Testprototyp. Er darf
+12. Der Code unter `backend/` ist ein Referenz- und Testprototyp. Er darf
     Providersemantik und Prompts belegen, ist aber weder Produktlaufzeit noch
     Nachweis für lokale Android-Anforderungen.
-11. Eingehende URLs, Providerdaten, Transkripte und Modell-Markdown sind
+13. Eingehende URLs, Providerdaten, Transkripte und Modell-Markdown sind
     unvertrauenswürdig. Hosts/IDs validieren, HTML nicht ausführen,
     Link-Schemes begrenzen und keine Modell-Tools aktivieren.
-12. Alte Briefings sind unveränderliche historische Ergebnisse. Neuerstellung
+14. Alte Briefings sind unveränderliche historische Ergebnisse. Neuerstellung
     erzeugt einen neuen Datensatz mit Stil- und Modell-Snapshot.
-13. Jedes Briefing zeigt einen sichtbaren Link/Button zur ausschließlich aus
+15. Jedes Briefing zeigt einen sichtbaren Link/Button zur ausschließlich aus
     der validierten Video-ID konstruierten kanonischen HTTPS-URL.
-14. Keine vollständigen fremden Transkripte oder realen inhaltlichen
+16. Keine vollständigen fremden Transkripte oder realen inhaltlichen
     Providerantworten committen. Tests verwenden synthetische Fixtures.
-15. Jede Room-Schemaänderung braucht eine Migration und einen Migrationstest.
-16. Neue Dependencies werden begründet, kontrolliert gepinnt und auf Lizenz,
+17. Jede Room-Schemaänderung braucht eine Migration und einen Migrationstest.
+18. Neue Dependencies werden begründet, kontrolliert gepinnt und auf Lizenz,
     Wartungsstand, Android 13, ARM64 und Offline-Build-Reproduzierbarkeit geprüft.
-17. `connectedDebugAndroidTest` darf nicht gegen die täglich genutzte
+19. `connectedDebugAndroidTest` darf nicht gegen die täglich genutzte
     Debug-Installation laufen: Der Gradle-/UTP-Lauf kann App-Daten einschließlich
     BYOK und Historie ersetzen. Gerätetests stattdessen über eine isolierte
     Test-Application-ID oder datenbewahrend per gezieltem `adb install -r` plus
@@ -102,7 +112,7 @@ Keine geschätzten Prozentwerte verwenden.
 | M1 – Persistenter Happy Path | erledigt | 2026-08-30 | Ein-Schritt-Pipeline, Room-Historie, eigener Detail-View und Kaltstart-/Offline-Smoke sind erfüllt. |
 | M2 – Share und Export | erledigt | 2026-08-30 | `ACTION_SEND`, Copy/Share, persistente WorkManager-Wiederaufnahme sowie Hoch-/Querformat, Dark Mode und 150-%-Schriftgröße sind auf Android 13 verifiziert. |
 | M3 – Stile und Fallback-Einstellungen | erledigt | 2026-08-30 | Settings, Stil-CRUD/-Snapshots, RapidAPI-BYOK/Opt-in/Zähler, Duplikathinweis und Briefing-Löschung sind auf Android 13 verifiziert. |
-| M4 – Härtung und APK | offen | 2026-08-30 | Als Nächstes Fehlermatrix, Secret-Scan, Release-Signing und repräsentative Gerätesmokes. |
+| M4 – Härtung und APK | erledigt | 2026-08-30 | Fehlermatrix, zwölf isolierte Gerätetests, konfigurierbarer RapidAPI-Raw-E2E, Secret-Scan, RSA-4096-Release-Signing, Clean-Cutover sowie Icon/Theme-Smoke auf Android 13 bestanden. |
 
 ## Früh zu validierende Annahmen
 
@@ -141,6 +151,7 @@ Keine geschätzten Prozentwerte verwenden.
 | 2026-08-30 | Share-Intent wird genau einmal konsumiert | Direkteingabe und Share nutzen denselben Orchestrator; ein konsumiertes Share-Event darf bei Rücknavigation keinen zweiten Providerrequest starten. |
 | 2026-08-29 | RapidAPI als Opt-in-Fallback | Schützt gegen geeignete Primärfehler; Quote und Kosten erfordern strikte Nachordnung. |
 | 2026-08-30 | Nativer Compose-Markdown-Renderer | Zielgerätetest deckt Sicherheitsregeln, Code sowie horizontalen und vertikalen Scroll ab. |
+| 2026-08-30 | Isolierte Application ID für Instrumentierung | `de.lmaa.app.testbed` verhindert, dass reguläre Gerätetests BYOK und Room-Historie der täglichen App ersetzen. |
 
 ## Änderungsprotokoll
 
@@ -385,6 +396,85 @@ Android-Produktarchitektur.
 - Relevante Entscheidung: Das RapidAPI-Kontingent ist unbekannt; `/100` ist
   visuell untergeordnet und gilt nur bedingt für Basic. Explizite Neuerstellung
   aus einem geöffneten Briefing benötigt keine redundante Duplikatbestätigung.
+
+### 2026-08-30 – M4 Providerhärtung und isolierte Gerätetests
+
+- Milestone/Scope: M4, FAL-001, TST-001, SEC-001 und REL-001.
+- Validierte Anforderung: Providerfehler müssen deterministisch und ohne
+  unbegrenzte Retries enden; Instrumentierung darf persönliche App-Daten nicht
+  verändern; Releases benötigen eine langlebige private Signatur.
+- Umgesetzt: Tests für gemeinsame Timeouts, HTTP 429/503, malformed/empty
+  Providerantworten und Einzelrequest-Grenzen. Default-Testvariante
+  `instrumented` mit Application ID `de.lmaa.app.testbed`; explizit gesperrter
+  RapidAPI-Live-Smoke. Ignorierte Release-Signing-Konfiguration samt
+  Platzhaltervorlage und `verifyReleaseSigning`-Gate.
+- Verifiziert mit: Gradle `testInstrumentedUnitTest assembleDebug
+  assembleInstrumented assembleInstrumentedAndroidTest lintDebug` (146 Tasks,
+  erfolgreich), elf isolierten Instrumentierungstests auf Android 13 sowie
+  Git-/APK-Scan gegen beide lokalen Testkeys (0 Treffer in vier APKs).
+- Manuell geprüft auf: RapidAPI-Einstellungen zeigten beide BYOK-Felder nur als
+  `****`, aktivierten Fallback und Zählerstand 3. Ein exakt einmal
+  freigeschalteter Live-Smoke war erfolgreich und erhöhte den lokalen Stand auf
+  4 Versuche/4 Erfolge. Danach blieb ausschließlich `de.lmaa.app` installiert.
+- Offen/Blocker: Die tägliche `de.lmaa.app` ist debug-signiert; ein neuer
+  Release-Key kann sie bei gleicher Application ID nicht datenbewahrend
+  ersetzen. Zuerst Übergang per Historienexport/-import, bewusstem Neuaufbau
+  oder temporärer paralleler ID festlegen; dann langlebigen privaten Keystore
+  interaktiv erstellen und signierten Geräte-Smoke ausführen.
+- Relevante Entscheidung: Live-Provider-Smokes bleiben standardmäßig
+  assumption-gated; normale Instrumentierung zielt nie auf die tägliche App.
+
+### 2026-08-30 – Verlorene konfigurierbare RapidAPI-Anforderung wiederhergestellt
+
+- Milestone/Scope: M4, FAL-001 bis FAL-003.
+- Validierte Anforderung: Andere RapidAPI-Transkriptanbieter müssen ohne neuen
+  providerspezifischen Parser konfigurierbar sein; RapidAPI darf optional
+  Primärquelle sein. cURL dient nur als deklarative Eingabe und darf nie
+  ausgeführt werden.
+- Abweichungsursache: Die frühere Planung war nicht in den gemergten Git-Refs
+  enthalten. M0/M3 implementierten deshalb nur einen festen
+  `youtube-transcripts`-Adapter mit Bool-Fallback und dokumentierten die
+  ursprüngliche Anforderung fälschlich als erfüllt.
+- Umgesetzt: separates Profil-DataStore ohne Key, sichere Templates und
+  Platzhalter, GET/POST, Status-/Timeout-/Größengrenzen, eingeschränkter
+  cURL-Import, Defaults, drei Routingmodi sowie vollständige Raw-Response-
+  Weitergabe im promptseitigen UNTRUSTED-Block.
+- Verifiziert mit: Kotlin-/Proto-/Android-Testkompilierung und
+  `testInstrumentedUnitTest`; Profil-/JSON-, SSRF-, Header-, Keyplatzierungs-,
+  cURL-, Routing-, HTTP- und Raw-Promptverträge bestanden.
+- Manuell geprüft auf: noch offen; Release/Deployment bleibt bis zum isolierten
+  Settings-/Persistenztest gestoppt.
+- Offen/Blocker: isolierte Instrumentierung auf Android 13, visueller
+  Settings-Smoke und ein gezielter realer Raw-Providerlauf.
+- Relevante Entscheidung: Providerprofile enthalten nie den Key. Nur
+  `X-RapidAPI-Key: {{rapidapi_key}}` darf ihn zur Requestzeit materialisieren.
+
+### 2026-08-30 – M4 mit Release, RapidAPI-Raw-E2E und visueller Identität abgeschlossen
+
+- Milestone/Scope: M4, FAL-001 bis FAL-003, REL-001 und UI-003.
+- Validierte Anforderung: Die frei konfigurierbare RapidAPI-Quelle muss auf dem
+  produktiven Release bis zum Briefing funktionieren; das persönliche Sideload-
+  Release braucht eine stabile Signatur sowie ein eigenständiges, angenehmes
+  Erscheinungsbild aus dem bereitgestellten Referenzfoto.
+- Umgesetzt: langlebiges lokales RSA-4096-Signing samt sicherer Erzeugungshilfe;
+  Adaptive Icon mit Android-13-Monochromvariante; kontrastierte Material-3-
+  Light-/Dark-Rollen aus Lavendel, Sage/Oliv und warmem Off-White.
+- Verifiziert mit: `testInstrumentedUnitTest assembleDebug` (erfolgreich vor
+  dem Lint-Schritt), anschließend `lintDebug verifyReleaseSigning
+  assembleRelease` (Build erfolgreich); `apksigner verify --verbose`; zwölf
+  isolierte Instrumentierungstests; vollständige Byte-Suche gegen beide lokalen
+  Testkeys in versionierten Dateien und Release-APK (je 0 Treffer).
+- Manuell geprüft auf: freigegebener Clean-Cutover auf dem Galaxy Tab,
+  Kaltstart und datenbewahrendes `adb install -r`; Adaptive Icon in runder
+  Samsung-Maske; helles Home-Theme; maskierte BYOK-Felder; Profil-Settings.
+  Ein Share von `Rq5iOD-mcEI` im Modus `RapidAPI bevorzugt` durchlief reale
+  RapidAPI-Rohantwort, `gpt-5.6-sol`, Room und Detail-Rendering. Der Zähler stieg
+  exakt auf 5 Versuche/5 Erfolge; danach wurde `Nur als Fallback` aktiviert.
+- Offen/Blocker: keine für M4. Keystore und `signing.properties` müssen als
+  zusammengehöriges Wiederherstellungsset außerhalb des Repositories gesichert
+  werden.
+- Relevante Entscheidung: Das fotoabgeleitete Raster bleibt die farbige Icon-
+  Quelle; Android erhält zusätzlich deklarative Adaptive-/Monochrom-Layer.
 
 ## Vorlage für Fortschrittseinträge
 

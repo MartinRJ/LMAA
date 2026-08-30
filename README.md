@@ -72,10 +72,21 @@ Bereits verifiziert:
   Zieltablet geprüft. Querformat verwendet getrennt scrollbare Arbeits-/Historien-
   beziehungsweise Aktions-/Markdown-Bereiche; große Schrift fällt kontrolliert
   auf ein einspaltiges Layout zurück.
+- Eigenes Adaptive Icon mit Android-13-Monochromvariante sowie ein aus dem
+  Referenzfoto abgeleitetes Material-3-Farbsystem: Lavendel als Primärakzent,
+  Sage/Oliv als Sekundärrollen und warmes Off-White für helle Flächen. Icon und
+  Light Theme sind auf dem Samsung-Zielgerät visuell geprüft; Dark Mode besitzt
+  eigenständige kontrastreiche Rollen.
 - Umfangreicher Android-Map-Reduce-Smoke mit 7.311 Segmenten und 210.682
   Transkriptzeichen; das fertige Briefing renderte Pflichtstruktur, zahlreiche
   Zeitmarken und Programmierbegriffe mit Inline-Code.
-- RapidAPI-Testzähler: 3 lokale Versuche. Nur der UI-Span `/100` ist als
+- RapidAPI-Testzähler: 5 lokale Versuche/5 Erfolge. Der fünfte Aufruf war ein
+  vollständiger Release-E2E-Test im Modus `RapidAPI bevorzugt`: Die validierte
+  Rohantwort wurde unverändert an `gpt-5.6-sol` übergeben, als Briefing gerendert
+  und in Room gespeichert. Anschließend wurde `Nur als Fallback` wieder aktiviert.
+  Der vierte Aufruf war ein
+  gezielter Android-Live-Smoke mit dem in der App gespeicherten BYOK; der Key
+  wurde dabei weder ausgelesen noch ausgegeben. Nur der UI-Span `/100` ist als
   hellgrauer Hinweis auf einen möglichen Basic-Tarif markiert; die App kennt den
   gebuchten Tarif nicht, das RapidAPI-Dashboard bleibt maßgeblich.
 
@@ -126,14 +137,29 @@ Zugriff. Er kann durch YouTube-Änderungen ausfallen. Mobilfunk-/Privatanschlüs
 sind weniger typisch für Rechenzentrums-IP-Sperren, ein Erfolg ist trotzdem nur
 durch Tests auf dem Zielgerät belegt.
 
-### RapidAPI ausschließlich als Fallback
+### RapidAPI als frei konfigurierbare Transkriptquelle
 
-- Standardmäßig deaktiviert.
-- Nur nach einem geeigneten technischen Fehler des lokalen Primärproviders,
-  niemals parallel und niemals vorsorglich.
-- Kein Fallback bei ungültiger URL, bewusstem Abbruch, privatem/gelöschtem Video
-  oder eindeutig nicht vorhandenem Transkript.
-- Direkter HTTPS-Aufruf vom Tablet an den fest konfigurierten RapidAPI-Host.
+- Standardmäßig deaktiviert; ausdrücklich wählbare Betriebsarten sind `Aus`,
+  `Nur als Fallback` und `RapidAPI bevorzugt`.
+- Im Fallbackmodus läuft zuerst der lokale Primärprovider. RapidAPI wird nur
+  nach einem geeigneten technischen Fehler genau einmal aufgerufen, niemals
+  parallel oder vorsorglich. Ungültige URLs, Abbruch, private/gelöschte Videos
+  und eindeutig fehlende Captions verbrauchen keine RapidAPI-Quote.
+- Im bevorzugten Modus läuft RapidAPI zuerst. Nach einem technischen
+  Transport-/Providerfehler wird genau einmal lokal zurückgefallen;
+  Konfigurations- und Sicherheitsfehler werden nicht verdeckt.
+- Das Providerprofil enthält HTTPS-Endpoint, GET/POST, Query-Argumente,
+  erlaubte Header, optionalen Body, Erfolgsstatuscodes, Connect-/Read-/Write-/
+  Gesamt-Timeout und maximale Antwortgröße.
+- Unterstützte Platzhalter sind `{{canonical_url}}`, `{{video_id}}`,
+  `{{language}}` und `{{rapidapi_key}}`. Der Key-Platzhalter ist ausschließlich
+  als vollständiger Wert von `X-RapidAPI-Key` zulässig.
+- cURL aus dem RapidAPI-Dashboard kann als Konfigurationshilfe importiert
+  werden. Die App parst nur eine eingeschränkte deklarative Teilmenge und führt
+  niemals Shellcode, Redirects oder unbekannte Optionen aus.
+- Die Vorlage `youtube-transcripts.p.rapidapi.com` ist ohne Geheimwert
+  vorbefüllt. „Defaults wiederherstellen“ setzt Profil und Betriebsart zurück,
+  erhält aber einen bereits gespeicherten Key und deaktiviert RapidAPI.
 - Nutzer-Key als BYOK maskiert eingeben, als Tink-AEAD-Ciphertext in Proto
   DataStore speichern, löschen und ersetzen können. Das Tink-Keyset wird über
   Android Keystore geschützt. Nach dem Speichern zeigt die UI nur die konstante
@@ -143,6 +169,10 @@ durch Tests auf dem Zielgerät belegt.
 - Der lokale Zähler warnt anhand einer Basic-Referenz von 100 Requests. Die App
   kennt den gebuchten Tarif nicht; deshalb ist nur `/100` visuell untergeordnet
   und das RapidAPI-Dashboard bleibt maßgeblich.
+- Providerantworten werden nicht providerspezifisch deserialisiert. Nach
+  Erfolgsstatus-, Timeout-, Content-Type-, UTF-8- und Größenprüfung wird der
+  vollständige Response-Body inhaltlich unverändert als klar markierter
+  unvertrauenswürdiger Datenblock an OpenAI übergeben.
 
 Weitere Live-Aufrufe erfolgen in M0 nur, wenn ein Fallbackfehler auf dem Tablet
 ohne realen Provider nicht diagnostizierbar ist. Tests verwenden ansonsten
@@ -381,7 +411,8 @@ kanonischer YouTube-URL und Markdown.
 
 - Stil-CRUD, aktiver Stil, Default-Schutz und unveränderliche Snapshots.
 - Neuerstellung als separater historischer Eintrag.
-- RapidAPI-Opt-in, maskierter Key, Löschen, lokaler Monatszähler und Warnungen.
+- RapidAPI-Profil, drei Routingmodi, maskierter Key, Löschen, lokaler
+  Monatszähler und Warnungen.
 - Eigene Settings-View für OpenAI-/RapidAPI-Keyverwaltung; keine Key-Eingabe
   mehr im Home-View.
 
@@ -400,6 +431,28 @@ lokalen Versuchen.
 - Room-/Instrumentierungs-/Compose-Tests und Secret-Scan der APK.
 - Lokales Release-Signing und installierbare signierte APK.
 
+**Status:** erledigt. Provider-Timeouts und -Fehler für HTTP 4xx/5xx,
+Malformed/Empty Responses sowie fehlende Retries sind durch JVM-Tests
+abgedeckt. Instrumentierung verwendet standardmäßig die isolierte Application
+ID `de.lmaa.app.testbed`; zwölf Tests liefen auf dem Zieltablet, ohne die
+damalige tägliche Installation `de.lmaa.app` oder deren Daten zu berühren. Zwei
+gezielte Live-Smokes bestätigten BYOK, Defaultanbieter und den konfigurierbaren
+Raw-Response-E2E-Pfad; Zählerstand 5/5. Alle versionierten Dateien und die
+finale Release-APK wurden ohne Treffer gegen beide lokalen Testkeys geprüft.
+Ein privater RSA-4096-Keystore signiert die Release-APK; der freigegebene Clean-
+Cutover von der Debug-Signatur ist abgeschlossen. Signiertes Release, Adaptive
+Icon, Light Theme, Settings und vollständiges RapidAPI-Briefing liefen auf dem
+Zieltablet.
+
+Die ursprünglich geplante frei konfigurierbare RapidAPI-Quelle wurde in der
+M0/M3-Implementierung irrtümlich auf den festen `youtube-transcripts`-Adapter
+und einen Bool-Fallback reduziert. M4 korrigiert diese Abweichung: deklaratives
+Profil, eingeschränkter cURL-Import, drei Routingmodi und unveränderte
+Raw-Response-Weitergabe sind implementiert und per JVM/MockWebServer getestet;
+isolierte Profilpersistenz und Settings-UI sind auf Android 13 geprüft. Ein
+realer Release-E2E-Lauf im Modus `RapidAPI bevorzugt` bestätigte den gesamten
+Raw-Response-Pfad bis zum gerenderten und persistierten Briefing.
+
 ## 6. Teststrategie und V&V
 
 - **Validation:** Prüft, ob die Anforderung den persönlichen Stakeholderbedarf
@@ -415,8 +468,11 @@ lokalen Versuchen.
   Job-Reopen und atomare Job-/Briefing-Persistenz, ohne die tägliche App-
   Installation zurückzusetzen.
 - Architekturtest stellt sicher, dass kein LMAA-eigener Host kontaktiert wird.
-- Fallback-Wahrheitstabelle prüft Opt-in, Key, zulässigen Primärfehler und exakt
-  einen RapidAPI-Aufruf.
+- Routing-Wahrheitstabelle prüft alle drei Modi, beide Providerreihenfolgen,
+  geschlossene Fehlerklassen und exakt einen Zweitprovideraufruf.
+- RapidAPI-Contract-Tests prüfen Platzhalter, cURL-Teilmenge, SSRF-/Header-
+  Grenzen, Statuscodes, Timeouts, UTF-8, Content-Type, Antwortlimit,
+  Key-Redaktion und bytegetreue Raw-Promptweitergabe.
 - APK-/Git-Scans suchen nach bekannten Key-Präfixen und lokalen Key-Dateinamen.
 - OpenAI-Evals prüfen Pflichtüberschriften, Stiltreue, Zeitmarken,
   Halluzinationen und Map-Reduce-Konsistenz.

@@ -73,7 +73,7 @@ internal class ProviderUsageRepository(
         const val RAPIDAPI_CRITICAL_THRESHOLD = 95
         private const val RAPIDAPI_PROVIDER = "rapidapi"
         private const val DEVELOPMENT_BASELINE_MONTH = "2026-08"
-        private const val DEVELOPMENT_BASELINE_ATTEMPTS = 3
-        private const val DEVELOPMENT_BASELINE_SUCCESSES = 3
+        private const val DEVELOPMENT_BASELINE_ATTEMPTS = 4
+        private const val DEVELOPMENT_BASELINE_SUCCESSES = 4
     }
 }

@@ -19,8 +19,9 @@ data class TranscriptDocument(
     val isGenerated: Boolean,
     val provider: String,
     val segments: List<TranscriptSegment>,
+    val rawContent: String? = null,
 ) {
-    val characterCount: Int = segments.sumOf { it.text.length }
+    val characterCount: Int = rawContent?.length ?: segments.sumOf { it.text.length }
 }
 
 sealed interface TranscriptFetchResult {

@@ -1,0 +1,6 @@
+# Kopiere diese Datei lokal nach android/signing.properties.
+# signing.properties und alle Keystore-Dateien sind durch .gitignore ausgeschlossen.
+storeFile=signing/lmaa-release.jks
+storePassword=HIER_LOKALES_STORE_PASSWORT
+keyAlias=lmaa-release
+keyPassword=HIER_LOKALES_KEY_PASSWORT

@@ -1,20 +1,26 @@
 package de.lmaa.app
 
+import java.net.SocketTimeoutException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONArray
-import org.json.JSONException
-import org.json.JSONObject
+import okhttp3.RequestBody.Companion.toRequestBody
 
 internal class RapidApiTranscriptProvider(
     private val apiKey: String,
+    private val profile: RapidApiProfile = RapidApiProfile.DEFAULT,
     private val client: OkHttpClient = ProviderHttpClient.shared,
-    private val endpoint: HttpUrl = DEFAULT_ENDPOINT,
+    private val endpoint: HttpUrl? = null,
     private val onRequestFinished: suspend (success: Boolean, status: String) -> Unit = { _, _ -> },
 ) : TranscriptProvider {
     override suspend fun fetch(
@@ -27,44 +33,51 @@ internal class RapidApiTranscriptProvider(
         if (apiKey.isBlank()) {
             return@withContext TranscriptFetchResult.Failure("RAPIDAPI_KEY_MISSING")
         }
+        try {
+            RapidApiProfileValidator.requireValid(profile)
+        } catch (exception: IllegalArgumentException) {
+            return@withContext TranscriptFetchResult.Failure(
+                exception.message?.takeIf { it.startsWith("RAPIDAPI_") }
+                    ?: "RAPIDAPI_PROFILE_INVALID",
+            )
+        }
+
         val language = preferredLanguages.firstOrNull(::isAllowedLanguage) ?: "en"
-        val requestUrl = endpoint.newBuilder()
-            .addQueryParameter("url", "https://www.youtube.com/watch?v=$videoId")
-            .addQueryParameter("videoId", videoId)
-            .addQueryParameter("chunkSize", "100")
-            .addQueryParameter("text", "false")
-            .addQueryParameter("lang", language)
-            .build()
-        val request = Request.Builder()
-            .url(requestUrl)
-            .header("X-RapidAPI-Host", HOST)
-            .header("X-RapidAPI-Key", apiKey)
-            .get()
+        val context = TemplateContext(
+            canonicalUrl = "https://www.youtube.com/watch?v=$videoId",
+            videoId = videoId,
+            language = language,
+            apiKey = apiKey,
+        )
+        val request = buildRequest(context)
+        val requestClient = client.newBuilder()
+            .connectTimeout(profile.connectTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .readTimeout(profile.readTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .writeTimeout(profile.writeTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .callTimeout(profile.callTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .retryOnConnectionFailure(false)
             .build()
 
         val result = try {
-            client.newCall(request).execute().use { response ->
-                if (response.code == 429) {
-                    TranscriptFetchResult.Failure("RAPIDAPI_QUOTA_EXCEEDED")
-                } else if (!response.isSuccessful) {
-                    TranscriptFetchResult.Failure(
-                        "RAPIDAPI_HTTP_${response.code}",
+            requestClient.newCall(request).execute().use { response ->
+                when {
+                    response.code == 429 -> TranscriptFetchResult.Failure(
+                        "RAPIDAPI_QUOTA_EXCEEDED",
                     )
-                } else {
-                    decode(videoId, language, JSONObject(response.body.string()))
+                    response.code !in parseSuccessStatusCodes(profile.successStatusCodes) ->
+                        TranscriptFetchResult.Failure("RAPIDAPI_HTTP_${response.code}")
+                    else -> decodeRawResponse(videoId, language, response.body)
                 }
             }
         } catch (exception: CancellationException) {
             withContext(NonCancellable) {
-                try {
-                    onRequestFinished(false, "CANCELLED")
-                } catch (_: Exception) {
-                    // Cancellation must remain cancellation even if local accounting fails.
-                }
+                runCatching { onRequestFinished(false, "CANCELLED") }
             }
             throw exception
-        } catch (_: JSONException) {
-            TranscriptFetchResult.Failure("RAPIDAPI_MALFORMED_RESPONSE")
+        } catch (_: SocketTimeoutException) {
+            TranscriptFetchResult.Failure("RAPIDAPI_TIMEOUT")
         } catch (_: Exception) {
             TranscriptFetchResult.Failure("RAPIDAPI_NETWORK_ERROR")
         }
@@ -78,61 +91,103 @@ internal class RapidApiTranscriptProvider(
         result
     }
 
-    private fun decode(
+    private fun buildRequest(context: TemplateContext): Request {
+        val baseUrl = endpoint ?: requireNotNull(profile.endpoint.toHttpUrlOrNull())
+        val url = baseUrl.newBuilder().apply {
+            profile.queryParameters.forEach { entry ->
+                addQueryParameter(entry.name, render(entry.value, context))
+            }
+        }.build()
+        val builder = Request.Builder().url(url)
+        profile.headers.forEach { entry ->
+            builder.header(entry.name, render(entry.value, context))
+        }
+        return when (profile.method) {
+            RapidApiHttpMethod.GET -> builder.get().build()
+            RapidApiHttpMethod.POST -> {
+                val mediaType = profile.headers
+                    .firstOrNull { it.name.equals("Content-Type", true) }
+                    ?.value
+                    ?.toMediaTypeOrNull()
+                    ?: "text/plain; charset=utf-8".toMediaTypeOrNull()
+                builder.post(render(profile.bodyTemplate, context).toRequestBody(mediaType)).build()
+            }
+        }
+    }
+
+    private fun decodeRawResponse(
         videoId: String,
         requestedLanguage: String,
-        payload: JSONObject,
+        body: okhttp3.ResponseBody,
     ): TranscriptFetchResult {
-        val content = payload.optJSONArray("content")
-            ?: return TranscriptFetchResult.Failure("RAPIDAPI_EMPTY_TRANSCRIPT")
-        if (content.length() == 0) {
-            return TranscriptFetchResult.Failure("RAPIDAPI_EMPTY_TRANSCRIPT")
+        val mediaType = body.contentType()
+            ?: return TranscriptFetchResult.Failure("RAPIDAPI_CONTENT_TYPE_MISSING")
+        val normalizedMediaType = "${mediaType.type}/${mediaType.subtype}".lowercase()
+        if (normalizedMediaType !in ALLOWED_CONTENT_TYPES) {
+            return TranscriptFetchResult.Failure("RAPIDAPI_CONTENT_TYPE_NOT_ALLOWED")
         }
-        val segments = buildList {
-            repeat(content.length()) { index -> add(decodeSegment(content, index)) }
+        val charset = mediaType.charset(StandardCharsets.UTF_8)
+        if (charset != StandardCharsets.UTF_8) {
+            return TranscriptFetchResult.Failure("RAPIDAPI_CHARSET_NOT_UTF8")
         }
+        if (body.contentLength() > profile.maxResponseBytes) {
+            return TranscriptFetchResult.Failure("RAPIDAPI_RESPONSE_TOO_LARGE")
+        }
+        val source = body.source()
+        source.request(profile.maxResponseBytes.toLong() + 1)
+        val bytes = source.readByteArray(
+            minOf(source.buffer.size, profile.maxResponseBytes.toLong() + 1),
+        )
+        if (bytes.size > profile.maxResponseBytes) {
+            return TranscriptFetchResult.Failure("RAPIDAPI_RESPONSE_TOO_LARGE")
+        }
+        val raw = try {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(bytes))
+                .toString()
+        } catch (_: Exception) {
+            return TranscriptFetchResult.Failure("RAPIDAPI_RESPONSE_INVALID_UTF8")
+        }
+        if (raw.isBlank()) return TranscriptFetchResult.Failure("RAPIDAPI_EMPTY_RESPONSE")
         return TranscriptFetchResult.Success(
             TranscriptDocument(
                 videoId = videoId,
-                languageCode = payload.optString("lang").ifBlank { requestedLanguage },
-                isGenerated = payload.optBoolean("isGenerated", false),
-                provider = "rapidapi",
-                segments = segments,
+                languageCode = requestedLanguage,
+                isGenerated = false,
+                provider = "rapidapi:${profile.name}",
+                segments = emptyList(),
+                rawContent = raw,
             ),
         )
     }
 
-    private fun decodeSegment(content: JSONArray, index: Int): TranscriptSegment {
-        val segment = content.getJSONObject(index)
-        val text = segment.getString("text").trim()
-        if (text.isEmpty()) throw JSONException("Leeres Segment")
-        val offsetMilliseconds = when {
-            segment.has("offset") -> segment.getDouble("offset")
-            segment.has("start") -> segment.getDouble("start")
-            else -> 0.0
-        }
-        val durationMilliseconds = segment.optDouble("duration", 0.0)
-        if (!offsetMilliseconds.isFinite() || !durationMilliseconds.isFinite()) {
-            throw JSONException("Ungültige Zeitangabe")
-        }
-        return TranscriptSegment(
-            text = text,
-            startSeconds = (offsetMilliseconds / 1_000.0).coerceAtLeast(0.0),
-            durationSeconds = (durationMilliseconds / 1_000.0).coerceAtLeast(0.0),
-        )
-    }
+    private fun render(template: String, context: TemplateContext): String = template
+        .replace("{{canonical_url}}", context.canonicalUrl)
+        .replace("{{video_id}}", context.videoId)
+        .replace("{{language}}", context.language)
+        .replace("{{rapidapi_key}}", context.apiKey)
 
     private fun isAllowedLanguage(value: String): Boolean = LANGUAGE_PATTERN.matches(value)
 
+    private data class TemplateContext(
+        val canonicalUrl: String,
+        val videoId: String,
+        val language: String,
+        val apiKey: String,
+    )
+
     private companion object {
-        const val HOST = "youtube-transcripts.p.rapidapi.com"
         val VIDEO_ID_PATTERN = Regex("^[A-Za-z0-9_-]{11}$")
         val LANGUAGE_PATTERN = Regex("^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$")
-        val DEFAULT_ENDPOINT = HttpUrl.Builder()
-            .scheme("https")
-            .host(HOST)
-            .addPathSegment("youtube")
-            .addPathSegment("transcript")
-            .build()
+        val ALLOWED_CONTENT_TYPES = setOf(
+            "application/json",
+            "text/json",
+            "text/plain",
+            "text/vtt",
+            "application/xml",
+            "text/xml",
+        )
     }
 }

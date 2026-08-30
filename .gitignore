@@ -6,6 +6,7 @@ OpenAI API KEY.txt
 youtube-transcripts Key.txt
 provider-smoke-usage.json
 local.properties
+android/signing.properties
 *.jks
 *.keystore
 *.p12

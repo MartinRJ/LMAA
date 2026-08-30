@@ -9,6 +9,11 @@ Backend-Dienst voraussetzen. Der Primärtranskriptpfad ist mit Chaquopy
 integriert und auf dem Zieltablet verifiziert. oEmbed, OpenAI Responses und der optionale
 RapidAPI-Fallback werden direkt aus Android über HTTPS aufgerufen.
 
+Das UI verwendet ein eigenes Material-3-Schema aus Lavendel, Sage/Oliv und
+warmem Off-White mit separaten Light-/Dark-Rollen. Das Launcher-Asset ist ein
+Adaptive Icon mit maskensicherem Vordergrund und monochromer Android-13-
+Variante; `AndroidManifest.xml` referenziert reguläres und rundes Icon.
+
 Provider-Keys folgen persönlichem BYOK: Der Nutzer trägt sie einmalig in ein
 Passwortfeld ein. Die App persistiert nur Tink-AEAD-Ciphertext in Proto
 DataStore; das Tink-Keyset wird über Android Keystore geschützt. Anschließend
@@ -38,9 +43,12 @@ Schlüssel geschützt und im No-Backup-Bereich gespeichert.
 - WorkManager 2.11.2 für persistente, langlebige Analyseaufträge
 - OkHttp/MockWebServer 5.3.0 für direkte Provideradapter und Vertragstests
 
-Der Build wird mit `gradlew.bat testDebugUnitTest assembleDebug lintDebug`
-ausgeführt. Für den Zielgerätetest ist anschließend die Debug-APK auf dem
-Galaxy Tab S7+ unter Android 13 zu installieren.
+Der vollständige lokale Build wird mit `gradlew.bat testInstrumentedUnitTest
+assembleDebug assembleInstrumented assembleInstrumentedAndroidTest lintDebug`
+ausgeführt. Die Variante `instrumented` verwendet die isolierte Application ID
+`de.lmaa.app.testbed`; Instrumentierung darf dadurch nicht auf Daten der täglich
+genutzten App `de.lmaa.app` zugreifen. Für einen Zielgerätetest werden
+`app-instrumented.apk` und `app-instrumented-androidTest.apk` installiert.
 
 Gradles Configuration Cache ist deaktiviert, weil Chaquopy 17 während der
 Konfigurationsphase den passenden Build-Python-Prozess startet. Normale
@@ -75,7 +83,20 @@ Analyse geöffnet. Schema 3 liegt unter `app/schemas`; die Migration 1→3 ist
 durch einen datenbewahrenden Instrumentierungstest verifiziert. Jede spätere
 Änderung benötigt ebenfalls Migration plus Migrationstest.
 
-Die eigene Settings-Ansicht verwaltet OpenAI- und RapidAPI-BYOK. Die
+Die eigene Settings-Ansicht verwaltet OpenAI- und RapidAPI-BYOK. RapidAPI ist
+als deklaratives Providerprofil mit `Aus`, `Nur als Fallback` und `RapidAPI
+bevorzugt` konfigurierbar. Endpoint, GET/POST, Query, erlaubte Header, Body,
+Erfolgsstatuscodes, vier Timeouts und Antwortlimit sind editierbar. Die
+Platzhalter `{{canonical_url}}`, `{{video_id}}`, `{{language}}` und
+`{{rapidapi_key}}` werden kontrolliert eingesetzt; der Key bleibt ausschließlich
+im verschlüsselten Secret-Store. Ein eingeschränkter cURL-Importer liest
+Dashboard-Beispiele deklarativ, führt aber keinen Befehl aus. Defaults stellen
+die bekannte `youtube-transcripts`-Vorlage wieder her, erhalten den Key und
+setzen den Modus auf `Aus`. Nach Status-/Content-Type-/UTF-8-/Größenprüfung geht
+der komplette Response-Body ohne providerspezifische Deserialisierung als
+UNTRUSTED-Block an OpenAI.
+
+Die
 Stilansicht unterstützt benutzerdefinierte Stile, Aktivierung, Bearbeitung und
 Löschung; der integrierte Standardstil ist geschützt. Analyseauftrag und
 Briefing speichern Name, Anweisung und Ausgabesprache als unveränderlichen
@@ -115,8 +136,10 @@ M0-Abschluss wurden zusätzlich ein expliziter Short und die Android-RapidAPI-
 Wahrheitstabelle geprüft: `engQjz-Lm54` wurde korrekt kanonisiert und endete
 wegen deaktivierter Captions kontrolliert ohne RapidAPI-Aufruf. MockWebServer
 belegt Opt-in, Keypflicht, geschlossene Fehler-Whitelist, genau einen
-Fallbackrequest und keinen Retry bei HTTP 429. RapidAPI bleibt bei drei lokal
-dokumentierten Versuchen; `/100` ist nur ein bedingter Basic-Tarif-Hinweis.
+Fallbackrequest und keinen Retry bei HTTP 429. RapidAPI steht nach einem
+weiteren vollständigen Release-E2E-Lauf über Raw-Response und OpenAI bei fünf
+lokal dokumentierten Versuchen/Erfolgen;
+`/100` ist nur ein bedingter Basic-Tarif-Hinweis.
 
 Der erfolgreiche Short `Rq5iOD-mcEI` lieferte ein englisches Transkript und
 durchlief mehrfach den vollständigen Share-/Briefingpfad. Das Gegenpaar mit
@@ -125,17 +148,41 @@ getrennte Eigenschaften sind.
 
 Gerätetesthinweis: Gradles UTP-Task `connectedDebugAndroidTest` kann die Daten
 der installierten Debug-App ersetzen. Er darf deshalb nicht gegen die täglich
-genutzte Installation mit BYOK/Room-Historie laufen. Für M3 wurden stattdessen
-zehn gezielte Instrumentierungstests mit `adb shell am instrument` ausgeführt;
-BYOK-Maske und fünf Historieneinträge blieben erhalten. Bis eine isolierte
-Test-Application-ID existiert, bleibt dieses Verfahren oder ein separates
-Testgerät/-profil verbindlich.
+genutzte Installation mit BYOK/Room-Historie laufen. M4 stellt deshalb
+standardmäßig gegen `de.lmaa.app.testbed` zusammen. Zwölf isolierte
+Instrumentierungstests liefen auf dem Zieltablet; der optionale RapidAPI-
+Live-Smoke war ohne explizites Instrumentierungsargument übersprungen. Für den
+einmaligen Live-Smoke wurde der Test gezielt gegen `debug` gebaut, verwendete
+den bereits in der App gespeicherten BYOK und erhöhte den lokalen Zähler exakt
+von 3 auf 4. Die Testbed-Pakete wurden danach entfernt. Nach dem Release-Cutover
+bestätigte ein weiterer Lauf im Modus `RapidAPI bevorzugt` die unveränderte Raw-
+Response-Übergabe bis zum gespeicherten Briefing und erhöhte den Stand auf 5/5;
+anschließend wurde `Nur als Fallback` wieder aktiviert.
+
+## Release-Signing
+
+Private Signing-Dateien bleiben lokal und sind ignoriert. Die versionierte
+Vorlage `signing.properties.example` wird nach `signing.properties` kopiert und
+verweist standardmäßig auf `signing/lmaa-release.jks`. Passwörter und Keystore
+dürfen weder in Git noch in Supportausgaben erscheinen. `verifyReleaseSigning`
+stoppt `assembleRelease` und `bundleRelease`, wenn Konfiguration oder Keystore
+fehlen. Nach der einmaligen interaktiven Keystore-Erstellung baut
+`gradlew.bat assembleRelease` die signierte APK.
+
+`scripts/create-release-signing.ps1` erzeugt den lokalen RSA-4096-Keystore und
+zufällige Passwörter ohne Secret-Ausgabe. Der einmalig freigegebene Clean-
+Cutover ist abgeschlossen: `de.lmaa.app` läuft release-signiert auf dem
+Zieltablet. Künftige Releases mit demselben gesicherten Keystore können per
+`adb install -r` ohne Datenverlust aktualisiert werden. Eine Deinstallation ist
+kein regulärer Bestandteil des Build-/Testablaufs. Keystore und
+`signing.properties` müssen gemeinsam außerhalb des Repositories gesichert
+werden.
 
 Die M3-Settings- und Stilansichten sind auf dem Zielgerät verifiziert. Ein
 synthetischer Stil wurde angelegt, aktiviert, in einem realen OpenAI-Briefing
 gesnapshottet und danach zusammen mit dem erzeugten Testbriefing wieder entfernt;
-der Endzustand ist `Standard`, fünf bestehende Briefings und drei lokale
-RapidAPI-Versuche.
+der Endzustand ist `Standard`. Nach dem Release-Cutover enthält die neue lokale
+Historie das erfolgreiche Raw-Response-Testbriefing; RapidAPI steht bei 5/5.
 
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.

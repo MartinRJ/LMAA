@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package lmaa.rapidapi;
+
+option java_package = "de.lmaa.app.rapidapi.proto";
+option java_multiple_files = true;
+
+message RapidApiSettingsData {
+  string profile_json = 1;
+  string routing_mode = 2;
+}

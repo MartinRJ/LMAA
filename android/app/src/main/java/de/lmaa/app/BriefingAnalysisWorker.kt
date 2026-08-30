@@ -67,6 +67,10 @@ internal class BriefingAnalysisWorker(
             }
 
             val usageRepository = ProviderUsageRepository(database.providerUsageDao())
+            val rapidApiConfiguration = RapidApiSettingsRepository
+                .getInstance(applicationContext)
+                .state
+                .first()
             val rapidApiProvider = if (providerStatus.hasRapidApiKey) {
                 object : TranscriptProvider {
                     override suspend fun fetch(
@@ -75,6 +79,7 @@ internal class BriefingAnalysisWorker(
                     ): TranscriptFetchResult = store.useRapidApiKey { apiKey ->
                         RapidApiTranscriptProvider(
                             apiKey = apiKey,
+                            profile = rapidApiConfiguration.profile,
                             onRequestFinished = usageRepository::recordRapidApiAttempt,
                         ).fetch(videoId, preferredLanguages)
                     }
@@ -93,7 +98,7 @@ internal class BriefingAnalysisWorker(
                 ): TranscriptFetchResult = transcriptResolver.fetch(
                     videoId = videoId,
                     preferredLanguages = preferredLanguages,
-                    fallbackEnabled = providerStatus.rapidApiEnabled,
+                    routingMode = rapidApiConfiguration.routingMode,
                 )
             }
 

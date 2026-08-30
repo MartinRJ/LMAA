@@ -36,8 +36,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -93,13 +91,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         acceptShareIntent(intent)
         setContent {
-            MaterialTheme(
-                colorScheme = if (androidx.compose.foundation.isSystemInDarkTheme()) {
-                    darkColorScheme()
-                } else {
-                    lightColorScheme()
-                },
-            ) {
+            LmaaTheme {
                 val context = LocalContext.current.applicationContext
                 var secretStoreState by remember {
                     mutableStateOf<SecretStoreUiState>(SecretStoreUiState.Loading)
@@ -122,6 +114,9 @@ class MainActivity : ComponentActivity() {
                 val usageRepository = remember(database) {
                     ProviderUsageRepository(database.providerUsageDao())
                 }
+                val rapidApiSettingsRepository = remember(context) {
+                    RapidApiSettingsRepository.getInstance(context)
+                }
                 LaunchedEffect(styleRepository, usageRepository) {
                     styleRepository.ensureDefault()
                     usageRepository.ensureDevelopmentBaseline()
@@ -136,6 +131,7 @@ class MainActivity : ComponentActivity() {
                     workScheduler = remember(context) { AnalysisWorkScheduler(context) },
                     styleRepository = styleRepository,
                     usageRepository = usageRepository,
+                    rapidApiSettingsRepository = rapidApiSettingsRepository,
                     secretStoreState = secretStoreState,
                     incomingShare = incomingShare.value,
                     onShareConsumed = { sequence ->
@@ -179,6 +175,7 @@ private fun LmaaApp(
     workScheduler: AnalysisWorkScheduler,
     styleRepository: BriefingStyleRepository,
     usageRepository: ProviderUsageRepository,
+    rapidApiSettingsRepository: RapidApiSettingsRepository,
     secretStoreState: SecretStoreUiState,
     incomingShare: IncomingShare?,
     onShareConsumed: (Long) -> Unit,
@@ -225,6 +222,7 @@ private fun LmaaApp(
         destination == AppDestination.SETTINGS -> SettingsScreen(
             secretStoreState = secretStoreState,
             usageRepository = usageRepository,
+            rapidApiSettingsRepository = rapidApiSettingsRepository,
             onBack = { destination = AppDestination.HOME },
         )
         destination == AppDestination.STYLES -> BriefingStylesScreen(
