@@ -47,15 +47,22 @@ Bereits verifiziert:
   vertikal auf dem Zieltablet scrollbar.
 - Schlüsselloser oEmbed-Metadatenpfad als Referenz.
 - Modellzugriff auf exakt `gpt-5.6-sol` und Map-Reduce-Promptlogik im
-  Desktop-Referenzprototyp.
+  Desktop-Referenzprototyp sowie direkt aus der Android-App.
+- Persönliches BYOK über verschlüsseltes Proto DataStore/Tink mit
+  Android-Keystore-geschütztem Keyset; Kaltstart, feste `****`-Maske und leeres
+  Ersetzungsfeld sind auf dem Zieltablet verifiziert.
+- Vollständiger Gerätepfad URL → lokales Transkript → oEmbed →
+  `gpt-5.6-sol` → gerendertes Markdown ohne LMAA-Server.
+- Umfangreicher Android-Map-Reduce-Smoke mit 7.311 Segmenten und 210.682
+  Transkriptzeichen; das fertige Briefing renderte Pflichtstruktur, zahlreiche
+  Zeitmarken und Programmierbegriffe mit Inline-Code.
 - RapidAPI-Testzähler: 3 von 100 Requests, konservativ 97 verbleibend.
 
-Noch nicht verifiziert und damit M0-blockierend:
+Noch nicht verifiziert und damit für den vollständigen M0-Abschluss offen:
 
-- Direkter OpenAI-Responses-Aufruf aus der Android-App.
-- BYOK-Eingabe und verschlüsselte Speicherung der Provider-Keys über Proto
-  DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset.
-- Vollständiger App-Pfad ohne Zugriff auf einen LMAA-eigenen Server.
+- Explizit als YouTube Short identifizierter Geräte-Smoke.
+- Android-RapidAPI-Fallbackvertrag mit MockWebServer-Wahrheitstabelle; ein
+  weiterer realer RapidAPI-Aufruf ist dafür nicht erforderlich.
 
 Die detaillierte Anforderungsprüfung und Nachweismatrix steht in
 [`docs/anforderungs-vv.md`](docs/anforderungs-vv.md).
@@ -246,11 +253,13 @@ neue Architekturprüfung erforderlich.
 `EncryptedSharedPreferences` und `MasterKey` sind offiziell deprecated und
 deshalb ausdrücklich **nicht** die Zielarchitektur. Unverschlüsselte
 `SharedPreferences` sind ebenfalls unzulässig. Das offizielle AndroidX-Modul
-`datastore-tink` ist derzeit Alpha. M0 entscheidet daher nach Dependency- und
-Gerätetest, ob dieses Modul oder stabiles Proto DataStore mit einem eigenen
-Tink-AEAD-Serializer verwendet wird. In beiden Fällen gelten dieselben
-Invarianten: nur Ciphertext persistieren, Keyset über Android Keystore schützen,
-keinen Klartext loggen oder sichern und atomisches Ersetzen/Löschen ermöglichen.
+`datastore-tink` ist derzeit Alpha. Der M0-Spike hat deshalb stabiles Proto
+DataStore 1.2.1 mit einem eigenen Tink-1.23-AEAD-Serializer gewählt. Ein
+nicht exportierbarer Android-Keystore-AES-GCM-Schlüssel schützt das nur
+verschlüsselt im No-Backup-Bereich gespeicherte Tink-Keyset. Es gibt weder
+SharedPreferences noch einen Klartextfallback. Instrumentierungs- und
+Kaltstarttests auf Android 13 bestätigen Verschlüsselung, Maske, Ersetzen und
+Löschen.
 
 Die lokalen Dateien `OpenAI API KEY.txt` und
 `youtube-transcripts Key.txt` dienen ausschließlich expliziten

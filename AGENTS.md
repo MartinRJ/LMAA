@@ -92,7 +92,7 @@ Keine geschätzten Prozentwerte verwenden.
 | Milestone | Status | Letzte Änderung | Nachweis / nächster Schritt |
 |---|---|---:|---|
 | Planung und Research | erledigt | 2026-08-30 | Anforderungen auf autonome Tablet-App korrigiert; V&V-Matrix und Primärquellen dokumentiert. |
-| M0 – Lokale Laufzeit und Spikes | in Arbeit | 2026-08-30 | Chaquopy und lokaler Primärtranskriptabruf sind auf dem Tablet verifiziert; als Nächstes direkter Android-oEmbed-/OpenAI-Pfad und BYOK-Secret-Store. |
+| M0 – Lokale Laufzeit und Spikes | in Arbeit | 2026-08-30 | Vollständiger lokaler Android-Pfad einschließlich BYOK, oEmbed und `gpt-5.6-sol` ist auf dem Tablet verifiziert; offen sind expliziter Short-Smoke und Android-RapidAPI-Mockvertrag. |
 | M1 – Persistenter Happy Path | offen | 2026-08-30 | Lokales Transkript bis Room-persistierter Markdown-Detailansicht. |
 | M2 – Share und Export | offen | 2026-08-29 | Share-Intent, Copy/Share und Wiederaufnahme. |
 | M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Stil-CRUD, Snapshots, Keystore-Key-UX und RapidAPI-Zähler. |
@@ -109,12 +109,11 @@ Keine geschätzten Prozentwerte verwenden.
   OpenAI-Empfehlung für Client-Apps. BYOK, DataStore/Tink mit Android Keystore,
   Backup-Ausschluss, projektgebundener Key, hartes Spend-Limit und
   Sideload-Grenze reduzieren, beseitigen das Risiko aber nicht.
-- Das offizielle AndroidX-Modul `datastore-tink` ist derzeit Alpha. M0 muss
-  deshalb per Dependency-/Gerätespike zwischen diesem Modul und einer stabilen
-  Proto-DataStore-Integration mit eigenem Tink-AEAD-Serializer entscheiden;
-  die Sicherheitsinvarianten dürfen sich dadurch nicht ändern.
-- Zugriff auf `gpt-5.6-sol` ist im Referenzprototyp praktisch verifiziert; der
-  direkte Android-Request ist offen.
+- Das offizielle AndroidX-Modul `datastore-tink` ist derzeit Alpha. Gewählt ist
+  deshalb stabiles Proto DataStore 1.2.1 mit eigenem Tink-1.23-AEAD-Serializer;
+  Keyset-, Ciphertext- und Kaltstart-Smokes sind auf Android 13 bestanden.
+- Der direkte Android-Responses-Request mit exakt `gpt-5.6-sol`, `store=false`
+  und leerer Toolliste ist auf dem Zieltablet praktisch verifiziert.
 - oEmbed-Felder Kanal-ID, Veröffentlichungsdatum und Dauer sind im MVP nullable.
 - Die vorläufige Application ID lautet `de.lmaa.app`; Release-Key und
   endgültige ID folgen vor M4.
@@ -127,7 +126,8 @@ Keine geschätzten Prozentwerte verwenden.
 | 2026-08-30 | Autonome Android-App ohne LMAA-Backend | Entspricht dem persönlichen Tablet-Workflow, vermeidet Hosting/Betriebskosten und macht RapidAPI nur zum seltenen Fallback. |
 | 2026-08-30 | Chaquopy 17/Python 3.10 für den Primärprovider | Offizielle Matrix passt zu AGP 9.2.1/minSdk 26/ARM64; APK-Build, Offline-Rebuild und mehrere reale Geräteabrufe sind verifiziert. |
 | 2026-08-30 | Direkte OpenAI-Nutzung mit persönlichem BYOK | Kein eigener Server gewünscht; Risiko wird durch nutzereingegebenen restriktiven Key, DataStore/Tink, Android Keystore, Backup-Ausschluss und Spend-Limit begrenzt. |
-| 2026-08-30 | Proto DataStore + Tink AEAD als Secret-Store | Nur Ciphertext wird persistiert; das Tink-Keyset ist über Android Keystore geschützt. `EncryptedSharedPreferences` wurde wegen Deprecation verworfen; unverschlüsselte Preferences sind verboten. Die konkrete Integration wird in M0 nach Stabilitäts- und Gerätetest festgelegt. |
+| 2026-08-30 | Proto DataStore + Tink AEAD als Secret-Store | Nur Ciphertext wird persistiert; das Tink-Keyset ist über Android Keystore geschützt. `EncryptedSharedPreferences` wurde wegen Deprecation verworfen; unverschlüsselte Preferences sind verboten. |
+| 2026-08-30 | Stabiler eigener DataStore-AEAD-Serializer statt `datastore-tink` Alpha | Proto DataStore 1.2.1 und Tink Android 1.23.0 sind stabil; ein nicht exportierbarer Keystore-AES-GCM-Schlüssel schützt das verschlüsselte Tink-Keyset im No-Backup-Bereich, ohne SharedPreferences oder Klartextfallback. |
 | 2026-08-30 | YouTube oEmbed als MVP-Metadatenpfad | Titel, Kanalname und Thumbnail genügen ohne zusätzlichen Key; weitere Felder bleiben nullable. |
 | 2026-08-29 | Room und Snapshots | Briefings bleiben offline und unveränderlich; Stiländerungen verändern keine Historie. |
 | 2026-08-29 | RapidAPI als Opt-in-Fallback | Schützt gegen geeignete Primärfehler; Quote und Kosten erfordern strikte Nachordnung. |
@@ -212,6 +212,33 @@ Android-Produktarchitektur.
   Parallelisierung bleiben aktiv. Die Debug-APK ist rund 27,8 MB groß.
 - Offen: direkter Android-oEmbed-/OpenAI-Pfad, BYOK-Secret-Store, expliziter
   YouTube-Short-Nachweis und vollständiger M0-Briefingpfad.
+- RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
+
+### 2026-08-30 – BYOK, oEmbed und direkter OpenAI-Pfad auf Android verifiziert
+
+- Milestone/Scope: M0, LOC-001, MET-001, AIG-001 und SEC-001.
+- Validierte Anforderung: Die persönliche App erzeugt ohne LMAA-Server ein
+  Briefing aus lokalem Transkript, schlüssellosem oEmbed und direktem
+  `gpt-5.6-sol`; der nutzereingegebene Key bleibt Keystore-gestützt geschützt.
+- Umgesetzt: Proto DataStore 1.2.1 mit eigenem Tink-1.23-AEAD-Serializer,
+  Android-Keystore-Keysetschutz, No-Backup-Dateien und vollständige
+  Backup-Ausschlüsse; feste `****`-Maske, leeres Ersetzungsfeld und Löschen;
+  direkte oEmbed-/Responses-Adapter, deterministisches Map-Reduce und sicherer
+  Markdown-Pfad.
+- Verifiziert mit: 15 JVM-Tests einschließlich MockWebServer-Verträgen, Gradle
+  `testDebugUnitTest assembleDebug lintDebug assembleDebugAndroidTest`, APK-/
+  Git-Secret-Scan und Android-Instrumentierungstest; alle bestanden.
+- Manuell/ADB-geprüft auf Galaxy Tab S7+ 5G, Android 13: Key nach Kaltstart nur
+  als `****`, leeres Ersetzungsfeld, kurzer Gesamtpfad mit 27 Segmenten sowie
+  umfangreicher Map-Reduce-Gesamtpfad mit 7.311 Segmenten/210.682 Zeichen;
+  oEmbed und reale Briefings mit exakt `gpt-5.6-sol`, allen
+  Pflichtüberschriften, Zeitmarken und Inline-Code. Keine
+  AndroidRuntime-Exception.
+- Offen/Blocker: expliziter YouTube-Short-Smoke und Android-RapidAPI-
+  MockWebServer-Wahrheitstabelle; Room-Persistenz beginnt in M1.
+- Relevante Entscheidung: stabiles Proto DataStore mit eigenem AEAD-Serializer
+  statt des Alpha-Moduls `datastore-tink`; kein Klartext- oder
+  SharedPreferences-Fallback.
 - RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
 
 ## Vorlage für Fortschrittseinträge
