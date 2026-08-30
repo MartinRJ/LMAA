@@ -30,15 +30,19 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
 
 | ID | Anforderung | Validation | Verification am 2026-08-30 | Nächster Nachweis |
 |---|---|---|---|---|
-| LOC-001 | Kein LMAA-Server, kein PC, keine Domain | **validiert**; entspricht dem persönlichen mobilen Workflow und vermeidet zusätzliche Betriebskosten | **erfüllt für M0**; produktiver URL→lokales Transkript→oEmbed→OpenAI→Markdown-Pfad läuft autonom auf dem Tablet | in M1 mit Room-Persistenz wiederholen |
-| TRN-001 | `youtube-transcript-api` läuft primär in der APK | **validiert**; Chaquopy 17 passt zu AGP 9.2.1, minSdk 26, Python 3.10 und ARM64 | **erfüllt**; APK-/Offline-Build, mehrere reale Abrufe und expliziter Short mit kontrolliertem `TRANSCRIPTS_DISABLED` bestanden | erfolgreichen CC-Short ergänzend regressieren |
+| LOC-001 | Kein LMAA-Server, kein PC, keine Domain | **validiert**; entspricht dem persönlichen mobilen Workflow und vermeidet zusätzliche Betriebskosten | **erfüllt**; produktiver Ein-Schritt-Pfad und Room-Historie laufen autonom auf dem Tablet, gespeicherte Details öffnen nach Kaltstart ohne Analyse | Netzwerkziel-Regression in M4 |
+| TRN-001 | `youtube-transcript-api` läuft primär in der APK | **validiert**; Chaquopy 17 passt zu AGP 9.2.1, minSdk 26, Python 3.10 und ARM64 | **erfüllt**; APK-/Offline-Build, mehrere reale Abrufe, kontrollierter Short ohne Captions und erfolgreicher CC-Short `Rq5iOD-mcEI` bestanden | weitere repräsentative Videos in M4 |
 | TRN-002 | Kein API-Key für den Primärtranskriptpfad | **validiert**; die Bibliothek fordert keinen Key und keinen Headless Browser | **erfüllt auf dem Zielgerät**; lokale Key-Dateien fehlen in der APK, RapidAPI wurde nicht aufgerufen | APK-Secret-Scan fortführen |
 | FAL-001 | RapidAPI nur nach geeignetem Primärfehler und Opt-in | **validiert**; schont das persönliche 100-Request-Kontingent | **erfüllt für M0**; Android-Adapter und Wahrheitstabelle erzwingen Opt-in, Key, Fehler-Whitelist, exakt einen Request und keinen 429-Retry; Short mit deaktivierten Captions löste keinen Fallback aus | M3 ergänzt Einstellungs-UX und Monatszähler |
 | MET-001 | Titel, Kanalname und Thumbnail über oEmbed | **validiert**; genügt dem MVP ohne zusätzlichen Key | **erfüllt**; MockWebServer-Verträge und realer Android-oEmbed-Pfad bestanden, weitere Felder bleiben nullable | Regression in M1 |
 | AIG-001 | Briefing mit exakt `gpt-5.6-sol`, ohne Modellfallback | **validiert**; Modell und Responses-Endpunkt existieren und wurden praktisch erreicht | **erfüllt für M0**; kurzer und umfangreicher direkter Android-Pfad mit `store=false`, leerer Toolliste, Map-Reduce, allen Pflichtüberschriften, Zeitmarken und Inline-Code bestanden | weitere repräsentative Inhalte in M1/M4 evaluieren |
-| SEC-001 | Persönliches BYOK; kein Secret in APK, Git, Logs oder Backup | **bedingt validiert**; Proto DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset erfüllt das lokale Bedrohungsmodell, direkter Client-Key bleibt ein Restrisiko | **erfüllt für M0**; Ciphertext-/Keystore-Instrumentierung, No-Backup-Regeln, Kaltstart, `****`, leeres Ersetzen sowie APK-/Git-Scan bestanden | Lösch-UX weiter regressieren; Restrisiko bleibt akzeptierte Ausnahme |
-| DAT-001 | Historie und Snapshots lokal in Room | **validiert** | **offen** | Schema, Migrationstest und Neustart-Smoke |
+| SEC-001 | Persönliches BYOK; kein Secret in APK, Git, Logs oder Backup | **bedingt validiert**; Proto DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset erfüllt das lokale Bedrohungsmodell, direkter Client-Key bleibt ein Restrisiko | **erfüllt für M0**; Ciphertext-/Keystore-Instrumentierung, No-Backup-Regeln, Kaltstart, `****`, leeres Ersetzen sowie APK-/Git-Scan bestanden | M3 verschiebt Keyverwaltung in eigene Settings-View; Restrisiko bleibt akzeptierte Ausnahme |
+| DAT-001 | Historie und Snapshots lokal in Room | **validiert** | **erfüllt**; Room 2.8.4, exportiertes Schema 1, normalisierte Video-/Transkript-/Briefing-Daten, getrennte immutable Briefings, Datenbank-Reopen-Test und realer Kaltstart-/Offline-Smoke bestanden | jede folgende Schemaänderung mit Migration und Migrationstest |
 | UI-001 | Sicheres, langes Markdown einschließlich Code | **validiert** | **erfüllt**; Parsertests und Zielgerät-Smokes bestanden | Regressionstests fortführen |
+| UX-001 | Linkprüfung, Transkript und Briefing sind eine Nutzeraktion | **validiert**; entspricht dem täglichen „informiert statt ansehen“-Workflow | **erfüllt**; Direkteingabe besitzt einen Analyse-Button, `ACTION_SEND` startet denselben Orchestrator automatisch | Prozesswiederaufnahme in M2 |
+| UI-002 | Briefing erscheint in einem eigenen View | **validiert** | **erfüllt**; eigener scrollbarer Detail-View mit System-Zurück, Video, Kopieren und Teilen live geprüft | Tablet-Layoutvarianten in M2 |
+| INT-001 | LMAA ist installiertes `text/plain`-Share-Ziel für YouTube | **validiert** | **erfüllt**; PackageManager listet `de.lmaa.app/.MainActivity`; reale Shares und der manuelle Nutzer-Smoke direkt aus dem Samsung-/YouTube-Sharesheet führten ohne Folgeklick zum Briefing; Consume-once verhindert Wiederholung | Regression in M2/M4 |
+| TST-001 | Tests dürfen tägliche BYOK-/Historiedaten nicht zerstören | **validiert**; persönliche App-Daten sind produktive Stakeholderdaten | **Abweichung gefunden**; Gradle UTP ersetzte einmal Debug-App-Daten, lokale Key-Dateien blieben intakt und der Nutzer gab den Key erneut ein | isolierte Test-Application-ID oder datenbewahrende gezielte Instrumentation vor dem nächsten Gerätelauf |
 | COST-001 | Kein eigener Server; RapidAPI meist innerhalb Basic/Free | **validiert**; eigener Server entfällt, RapidAPI bleibt Ausnahme | **erfüllt für M0**; Hauptpfad und semantischer Short-Fehler benötigen keinen Server und keinen RapidAPI-Aufruf; Adapter hat keinen automatischen Retry | M3 ergänzt lokalen Monatszähler |
 
 ## Machbarkeitsprüfung des lokalen Transkriptpfads
@@ -64,8 +68,9 @@ Transkriptbeschaffung und Persistenz. Es bedeutet nicht Offline-Inferenz:
   manuelle und automatisch erzeugte deutsche/englische Transkripte.
 - Ein langes Transkript mit 7.311 Segmenten und 210.682 Zeichen überquerte die
   Python/Kotlin-Bridge erfolgreich; die Debug-APK ist rund 27,8 MB groß.
-- Detaillierte Laufzeit-/Speichermessung, Prozessneustart während eines Abrufs
-  und ein explizit als YouTube Short verifizierter Fall bleiben offen.
+- Shorts mit und ohne Captions sind explizit verifiziert. Detaillierte
+  Laufzeit-/Speichermessung und Prozessneustart während eines Abrufs bleiben
+  offen.
 
 ## Zielkonflikt: serverloser MVP und OpenAI-Key
 
@@ -121,13 +126,14 @@ und atomisches Löschen; ein Kaltstart-Smoke belegt die persistente `****`-Maske
    Fallbackfall und zählt ausgehende RapidAPI-Requests.
 5. **Erfüllt:** Direkter oEmbed- und OpenAI-Pfad läuft auf dem Tablet; OpenAI
    antwortete mit exakt `gpt-5.6-sol` und allen Pflichtüberschriften.
-6. Netzwerkprüfung zeigt ausschließlich erwartete Providerhosts und keinen
+6. **Erfüllt:** Netzwerkprüfung zeigt ausschließlich erwartete Providerhosts und keinen
    LMAA-eigenen Server.
-7. UI-Test prüft nach dem Speichern ausschließlich `****`, ein leeres
+7. **Erfüllt:** UI-Test prüft nach dem Speichern ausschließlich `****`, ein leeres
    Ersetzungsfeld und atomisches Löschen ohne Klartextwiederanzeige.
-8. APK-, Git- und Log-Scan findet weder lokalen Testkey noch bekannte
+8. **Erfüllt und fortlaufend:** APK-, Git- und Log-Scan findet weder lokalen Testkey noch bekannte
    Key-Präfixe; Backupregeln schließen Secret-/Room-Dateien aus.
-9. App-Neustart und Prozessabbruch erhalten Auftrag und fertiges Briefing lokal.
+9. **Teilweise erfüllt:** App-Neustart erhält fertige Briefings lokal; die
+   Wiederaufnahme eines laufenden Auftrags nach Prozessabbruch bleibt M2.
 
 ## Historische Abweichung
 

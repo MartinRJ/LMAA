@@ -34,6 +34,7 @@ Schlüssel geschützt und im No-Backup-Bereich gespeichert.
 - Chaquopy 17.0.0, Python 3.10, ausschließlich `arm64-v8a`
 - `youtube-transcript-api==1.2.4` mit vollständig gepinnten Python-Abhängigkeiten
 - Proto DataStore 1.2.1, Protobuf 4.32.1 und Tink Android 1.23.0
+- Room 2.8.4 mit KSP 2.3.10 und exportiertem Schema 1
 - OkHttp/MockWebServer 5.3.0 für direkte Provideradapter und Vertragstests
 
 Der Build wird mit `gradlew.bat testDebugUnitTest assembleDebug lintDebug`
@@ -54,12 +55,20 @@ kalt gestartet. Hochformat, initiales Layout und die Normalisierung einer
 die UI-Hierarchie geprüft; App-Abstürze traten nicht auf. Querformat, Dark Mode,
 große Schrift und Samsung-Sharesheet bleiben spätere Gerätesmokes.
 
-Die direkte URL-Eingabe arbeitet bereits mit einer Host-Whitelist, akzeptiert
-nur die geplanten URL-Formen und konstruiert die Vorschau ausschließlich aus
-der validierten elfstelligen Video-ID. Der lokale Transcript-Request läuft
-außerhalb des Main Threads und gibt ausschließlich normalisierte DTOs oder
-kontrollierte Fehlercodes an Compose zurück. Room, oEmbed und Briefing-Erzeugung
-folgen in den nächsten vertikalen Schritten.
+Die direkte URL-Eingabe arbeitet mit einer Host-Whitelist, akzeptiert nur die
+geplanten URL-Formen und konstruiert Providerrequests ausschließlich aus der
+validierten elfstelligen Video-ID. Ein einzelner Button sequenziert Linkprüfung,
+lokales Transkript, oEmbed, OpenAI und Room-Speicherung. `ACTION_SEND` aus der
+YouTube-App startet denselben Orchestrator automatisch und wird genau einmal
+konsumiert. Der manuelle Samsung-/YouTube-Sharesheet-Smoke ist bestanden.
+
+Das Ergebnis erscheint in einer eigenen scrollbaren Detailansicht mit
+kanonischem Video-Intent, Kopieren und Teilen. Room speichert normalisierte
+Video-, Transkript- und Briefing-Daten; Stiltext und Modell werden pro Briefing
+gesnapshottet. Zwei Analysen desselben Videos bleiben getrennte Datensätze. Die
+Historie und ihr Detail-View wurden nach APK-Update und Kaltstart ohne erneute
+Analyse geöffnet. Schema 1 liegt unter `app/schemas` und jede spätere Änderung
+benötigt Migration plus Migrationstest.
 
 Der lokale Primärpfad ist auf dem Galaxy Tab verifiziert. Reale Geräte-Smokes
 lieferten manuelles Deutsch (60 Segmente), automatisch erzeugtes Deutsch
@@ -82,6 +91,20 @@ wegen deaktivierter Captions kontrolliert ohne RapidAPI-Aufruf. MockWebServer
 belegt Opt-in, Keypflicht, geschlossene Fehler-Whitelist, genau einen
 Fallbackrequest und keinen Retry bei HTTP 429. RapidAPI bleibt bei 3/100.
 
+Der erfolgreiche Short `Rq5iOD-mcEI` lieferte ein englisches Transkript und
+durchlief mehrfach den vollständigen Share-/Briefingpfad. Das Gegenpaar mit
+`engQjz-Lm54` belegt, dass Short-Unterstützung und Caption-Verfügbarkeit
+getrennte Eigenschaften sind.
+
+Gerätetesthinweis: Gradles UTP-Task `connectedDebugAndroidTest` kann die Daten
+der installierten Debug-App ersetzen. Er darf deshalb nicht gegen die täglich
+genutzte Installation mit BYOK/Room-Historie laufen. Bis eine isolierte
+Test-Application-ID existiert, sind datenbewahrende gezielte Instrumentierung
+oder ein separates Testgerät/-profil zu verwenden.
+
+UX-To-do für M3: OpenAI-/RapidAPI-Keyverwaltung in eine eigene Settings-View
+verschieben. Der Home-View soll keine Keyeingabe mehr enthalten.
+
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.
 Er interpretiert kein HTML und macht ausschließlich HTTPS-Links ohne Userinfo oder
@@ -95,9 +118,11 @@ Codeblocks und vertikaler Scroll über ein mehrseitiges Briefing wurden auf dem
 Zieltablet manuell bestätigt. Ein beim unsicheren Link verbleibendes `)` wurde als
 Parserfehler identifiziert, behoben und mit einem Regressionstest abgesichert.
 
-Die AndroidX-Komponenten stammen aus dem stabilen Google-Maven-Kanal und sind
-Apache-2.0-lizenziert. JUnit 4.13.2 ist EPL-1.0-lizenziert. Versionen sind fest
-eingetragen bzw. über die fest gepinnte Compose BOM kontrolliert.
+Die AndroidX-Komponenten einschließlich Room 2.8.4 stammen aus dem stabilen
+Google-Maven-Kanal und sind Apache-2.0-lizenziert. KSP 2.3.10 ist
+Apache-2.0-lizenziert und wird ausschließlich zur Build-Zeit für Room-Codegen
+verwendet. JUnit 4.13.2 ist EPL-1.0-lizenziert. Versionen sind fest eingetragen
+bzw. über die fest gepinnte Compose BOM kontrolliert.
 
 Chaquopy ist seit Version 12.0.1 frei und MIT-lizenziert. Version 17 unterstützt
 laut Hersteller AGP 7.3–9.2, Python 3.10–3.14 und minSdk 24; die formale

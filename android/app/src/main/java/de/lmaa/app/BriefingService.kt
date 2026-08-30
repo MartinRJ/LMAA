@@ -57,18 +57,18 @@ sealed interface BriefingGenerationResult {
 internal class BriefingService(
     private val generator: BriefingTextGenerator,
     private val chunkCharacterLimit: Int = 80_000,
-) {
+) : BriefingCreator {
     init {
         require(chunkCharacterLimit >= 1_000)
         require(generator.model == OpenAiResponsesClient.MODEL) { "Nicht erlaubtes Modell" }
     }
 
-    suspend fun create(
+    override suspend fun create(
         transcript: TranscriptDocument,
         metadata: VideoMetadata,
         canonicalUrl: String,
-        styleName: String = "Standard",
-        styleInstructions: String = DEFAULT_STYLE_INSTRUCTIONS,
+        styleName: String,
+        styleInstructions: String,
     ): BriefingGenerationResult {
         if (transcript.segments.isEmpty()) return BriefingGenerationResult.Failure("EMPTY_TRANSCRIPT")
         val chunks = chunkTranscript(transcript.segments, chunkCharacterLimit)

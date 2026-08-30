@@ -58,6 +58,11 @@ Server-, Cloud- oder Pro-Ausbaustufen dürfen diesen Pfad nicht verdrängen.
 15. Jede Room-Schemaänderung braucht eine Migration und einen Migrationstest.
 16. Neue Dependencies werden begründet, kontrolliert gepinnt und auf Lizenz,
     Wartungsstand, Android 13, ARM64 und Offline-Build-Reproduzierbarkeit geprüft.
+17. `connectedDebugAndroidTest` darf nicht gegen die täglich genutzte
+    Debug-Installation laufen: Der Gradle-/UTP-Lauf kann App-Daten einschließlich
+    BYOK und Historie ersetzen. Gerätetests stattdessen über eine isolierte
+    Test-Application-ID oder datenbewahrend per gezieltem `adb install -r` plus
+    Instrumentation ausführen.
 
 ## Arbeitsreihenfolge pro Änderung
 
@@ -93,9 +98,9 @@ Keine geschätzten Prozentwerte verwenden.
 |---|---|---:|---|
 | Planung und Research | erledigt | 2026-08-30 | Anforderungen auf autonome Tablet-App korrigiert; V&V-Matrix und Primärquellen dokumentiert. |
 | M0 – Lokale Laufzeit und Spikes | erledigt | 2026-08-30 | Vollständiger Android-Pfad, BYOK, oEmbed/OpenAI, kurzer/langer/Short-Gerätesmoke und Android-RapidAPI-Mockvertrag sind verifiziert. |
-| M1 – Persistenter Happy Path | offen | 2026-08-30 | Lokales Transkript bis Room-persistierter Markdown-Detailansicht. |
-| M2 – Share und Export | offen | 2026-08-29 | Share-Intent, Copy/Share und Wiederaufnahme. |
-| M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Stil-CRUD, Snapshots, Keystore-Key-UX und RapidAPI-Zähler. |
+| M1 – Persistenter Happy Path | erledigt | 2026-08-30 | Ein-Schritt-Pipeline, Room-Historie, eigener Detail-View und Kaltstart-/Offline-Smoke sind erfüllt. |
+| M2 – Share und Export | in Arbeit | 2026-08-30 | `ACTION_SEND`, Copy/Share und Consume-once sind erfüllt; Prozesswiederaufnahme und Layoutvarianten bleiben offen. |
+| M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Als Nächstes eigene Settings-View statt Keyverwaltung im Home-View; danach Stil-CRUD, RapidAPI-Opt-in und Zähler. |
 | M4 – Härtung und APK | offen | 2026-08-29 | Fehlermatrix, Secret-Scan, Signing und Gerätesmokes. |
 
 ## Früh zu validierende Annahmen
@@ -130,6 +135,8 @@ Keine geschätzten Prozentwerte verwenden.
 | 2026-08-30 | Stabiler eigener DataStore-AEAD-Serializer statt `datastore-tink` Alpha | Proto DataStore 1.2.1 und Tink Android 1.23.0 sind stabil; ein nicht exportierbarer Keystore-AES-GCM-Schlüssel schützt das verschlüsselte Tink-Keyset im No-Backup-Bereich, ohne SharedPreferences oder Klartextfallback. |
 | 2026-08-30 | YouTube oEmbed als MVP-Metadatenpfad | Titel, Kanalname und Thumbnail genügen ohne zusätzlichen Key; weitere Felder bleiben nullable. |
 | 2026-08-29 | Room und Snapshots | Briefings bleiben offline und unveränderlich; Stiländerungen verändern keine Historie. |
+| 2026-08-30 | Room 2.8.4 mit exportiertem Schema 1 | Reifer stabiler AndroidX-Zweig statt des unmittelbar zuvor erschienenen Room-3-Major-Releases; Video, Transkript und Briefing werden normalisiert und Briefing-/Stil-/Modellstände historisiert. |
+| 2026-08-30 | Share-Intent wird genau einmal konsumiert | Direkteingabe und Share nutzen denselben Orchestrator; ein konsumiertes Share-Event darf bei Rücknavigation keinen zweiten Providerrequest starten. |
 | 2026-08-29 | RapidAPI als Opt-in-Fallback | Schützt gegen geeignete Primärfehler; Quote und Kosten erfordern strikte Nachordnung. |
 | 2026-08-30 | Nativer Compose-Markdown-Renderer | Zielgerätetest deckt Sicherheitsregeln, Code sowie horizontalen und vertikalen Scroll ab. |
 
@@ -266,6 +273,41 @@ Android-Produktarchitektur.
   IDs, nicht verfügbare Videos, interne App-Fehler oder Abbruch; kein Retry bei
   HTTP 429.
 - RapidAPI: kein Live-Aufruf; Entwicklungsstand unverändert 3/100.
+
+### 2026-08-30 – M1 mit Ein-Schritt-Pipeline und Room-Historie abgeschlossen
+
+- Milestone/Scope: M1 sowie vorgezogene Teile von M2.
+- Validierte Anforderung: Linkprüfung, lokales Transkript und Briefing-Erzeugung
+  sind aus Nutzersicht eine Aktion; das Ergebnis liegt in einem eigenen View
+  und bleibt nach App-Neustart offline in einer unveränderlichen Historie.
+- Umgesetzt: Sequenzieller Pipeline-Orchestrator, einzelner Analyse-Button,
+  phasenbezogener Lade-/Abbruch-/Fehlerzustand, `ACTION_SEND` mit automatischem
+  Start, Consume-once-Semantik, eigener Detail-View, Video-/Copy-/Share-Aktionen
+  sowie Room 2.8.4 mit normalisierten Video-/Transkript-/Briefing-Tabellen,
+  Stil-/Modell-Snapshots und exportiertem Schema 1.
+- Verifiziert mit: 25 JVM-Tests, Gradle `--offline testDebugUnitTest
+  assembleDebug lintDebug assembleDebugAndroidTest`, zwei Android-13-
+  Instrumentierungstests und Room-Datenbanktest mit zwei unveränderlichen
+  Einträgen sowie Schließen/Wiederöffnen; alle inhaltlichen Checks bestanden.
+- Manuell geprüft auf: Galaxy Tab S7+ 5G, Android 13. Der CC-Short
+  `Rq5iOD-mcEI` durchlief Share → lokales Transkript → oEmbed →
+  `gpt-5.6-sol` → Room → Detailansicht. Zwei absichtliche Analysen erzeugten
+  exakt zwei Historieneinträge. Nach APK-Update und Kaltstart waren Key-Maske
+  und Historie vorhanden; der Detail-View öffnete aus Room ohne neue Analyse.
+  Der Nutzer bestätigte zusätzlich das Teilen direkt aus dem Samsung-/YouTube-
+  Sharesheet an die installierte LMAA-App.
+- Offen/Blocker: M1 hat keine offenen Abnahmepunkte. M2 behält
+  Prozesswiederaufnahme und Layoutvarianten. Für M3 ist eine eigene
+  Settings-View verbindliches nächstes UX-To-do; Keyverwaltung verlässt den
+  Home-View.
+- Testinfrastruktur-Befund: Ein Gradle-UTP-`connectedDebugAndroidTest` ersetzte
+  unerwartet die Daten der täglichen Debug-Installation. Lokale Key-Dateien
+  blieben unberührt; der App-Key wurde anschließend vom Nutzer neu eingegeben.
+  Dieser Task darf künftig nur isoliert oder datenbewahrend per gezielter
+  Instrumentation laufen.
+- Relevante Entscheidung: Share-Events werden nach Start atomar konsumiert;
+  Rücknavigation darf keinen Providerrequest wiederholen.
+- RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
 
 ## Vorlage für Fortschrittseinträge
 
