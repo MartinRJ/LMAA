@@ -4,9 +4,9 @@ Das Android-Gerüst nutzt Kotlin, Jetpack Compose/Material 3, minSdk 26 und
 targetSdk 36. Die Application ID ist vorläufig `de.lmaa.app`.
 
 Die App ist die vollständige Produktlaufzeit. Sie darf keinen LMAA-eigenen
-Backend-Dienst voraussetzen. Der Primärtranskriptpfad wird als Nächstes mit
-Chaquopy 17/Python 3.10 und `youtube-transcript-api==1.2.4` direkt in dieses
-Android-Modul integriert. oEmbed, OpenAI Responses und der optionale
+Backend-Dienst voraussetzen. Der Primärtranskriptpfad ist mit Chaquopy
+17/Python 3.10 und `youtube-transcript-api==1.2.4` direkt in dieses Android-Modul
+integriert und auf dem Zieltablet verifiziert. oEmbed, OpenAI Responses und der optionale
 RapidAPI-Fallback werden direkt aus Android über HTTPS aufgerufen.
 
 Provider-Keys folgen persönlichem BYOK: Der Nutzer trägt sie einmalig in ein
@@ -30,11 +30,17 @@ Tink-AEAD-Serializer eingesetzt.
 - AndroidX Activity Compose 1.11.0
 - AndroidX Core KTX 1.17.0
 - Android SDK Platform 36 und Build Tools 36.0.0
-- vorgesehen: Chaquopy 17.0.0, Python 3.10, `arm64-v8a`
+- Chaquopy 17.0.0, Python 3.10, ausschließlich `arm64-v8a`
+- `youtube-transcript-api==1.2.4` mit vollständig gepinnten Python-Abhängigkeiten
 
 Der Build wird mit `gradlew.bat testDebugUnitTest assembleDebug lintDebug`
 ausgeführt. Für den Zielgerätetest ist anschließend die Debug-APK auf dem
 Galaxy Tab S7+ unter Android 13 zu installieren.
+
+Gradles Configuration Cache ist deaktiviert, weil Chaquopy 17 während der
+Konfigurationsphase den passenden Build-Python-Prozess startet. Normale
+Build-Caches und Parallelisierung bleiben aktiv; ein Offline-Rebuild nach dem
+ersten Dependency-Download ist verifiziert.
 
 Am 2026-08-30 bestanden Unit-Tests, Debug-APK-Build und Android-Lint mit der
 vorhandenen SDK-Platform 36. `local.properties` ist ignoriert und muss lokal
@@ -47,13 +53,21 @@ große Schrift und Samsung-Sharesheet bleiben spätere Gerätesmokes.
 
 Die direkte URL-Eingabe arbeitet bereits mit einer Host-Whitelist, akzeptiert
 nur die geplanten URL-Formen und konstruiert die Vorschau ausschließlich aus
-der validierten elfstelligen Video-ID. Netzwerk, Room und Briefing-Erzeugung
-folgen im nächsten vertikalen Schritt.
+der validierten elfstelligen Video-ID. Der lokale Transcript-Request läuft
+außerhalb des Main Threads und gibt ausschließlich normalisierte DTOs oder
+kontrollierte Fehlercodes an Compose zurück. Room, oEmbed und Briefing-Erzeugung
+folgen in den nächsten vertikalen Schritten.
 
-Der nächste M0-Nachweis ist ausdrücklich kein Desktop- oder Backend-Test: Die
-installierte APK muss `youtube-transcript-api` über eine schmale Kotlin-Python-
-Bridge aufrufen und auf dem Galaxy Tab ein reales Transkript liefern. Erst dann
-ist der lokale Primärpfad verifiziert.
+Der lokale Primärpfad ist auf dem Galaxy Tab verifiziert. Reale Geräte-Smokes
+lieferten manuelles Deutsch (60 Segmente), automatisch erzeugtes Deutsch
+(1.660), automatisch erzeugtes Englisch (27) und ein langes englisches
+Transkript (7.311 Segmente/210.682 Zeichen). Die produktive URL→Abruf-UI und die
+Vorvalidierung `INVALID_VIDEO_ID` wurden ebenfalls geprüft; RapidAPI wurde nicht
+aufgerufen. Die Debug-APK ist rund 27,8 MB groß.
+
+Der nächste M0-Nachweis ist der direkte oEmbed-/OpenAI-Pfad aus Android mit
+BYOK-Secret-Store; erst danach ist der vollständige Briefingpfad ohne Backend
+belegt.
 
 Der native Compose-Renderer `SafeMarkdown` deckt Überschriften, Absätze, Listen,
 Zitate, Trennlinien, Hervorhebungen, Inline-Code, Codeblöcke und Markdown-Links ab.
@@ -74,5 +88,6 @@ eingetragen bzw. über die fest gepinnte Compose BOM kontrolliert.
 
 Chaquopy ist seit Version 12.0.1 frei und MIT-lizenziert. Version 17 unterstützt
 laut Hersteller AGP 7.3–9.2, Python 3.10–3.14 und minSdk 24; die formale
-Kompatibilität mit diesem Projekt ist damit validiert, der konkrete Build und
-Geräteabruf sind noch offen.
+Kompatibilität, der konkrete Build und reale Geräteabrufe sind verifiziert.
+`youtube-transcript-api`, Requests, urllib3 und charset-normalizer sind MIT-
+lizenziert; defusedxml und idna BSD-3-Clause, Certifi MPL-2.0.

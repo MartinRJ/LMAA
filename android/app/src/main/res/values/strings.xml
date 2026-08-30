@@ -8,6 +8,16 @@
     <string name="validate_link">Link prüfen</string>
     <string name="ready_for_analysis">Bereit für die Analyse</string>
     <string name="canonical_url">Kanonische URL</string>
+    <string name="fetch_local_transcript">Transkript lokal abrufen</string>
+    <string name="transcript_loading">Lokaler Primärprovider wird ausgeführt…</string>
+    <string name="transcript_ready">Lokales Transkript geladen</string>
+    <string name="transcript_language">Sprache: %1$s</string>
+    <string name="transcript_kind">Art: %1$s</string>
+    <string name="transcript_manual">manuell</string>
+    <string name="transcript_generated">automatisch erzeugt</string>
+    <string name="transcript_segments">Segmente: %1$d</string>
+    <string name="transcript_characters">Zeichen: %1$d</string>
+    <string name="transcript_error">Lokaler Abruf fehlgeschlagen: %1$s</string>
     <string name="history_title">Bisherige Briefings</string>
     <string name="history_empty">Noch keine Briefings. Der erste vollständige Analysepfad folgt als Nächstes.</string>
     <string name="url_error_empty">Bitte einen YouTube-Link eingeben.</string>

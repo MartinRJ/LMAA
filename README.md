@@ -37,6 +37,11 @@ Diese Entscheidung ist aufgehoben.
 Bereits verifiziert:
 
 - Android-Gerüst mit Compose/Material 3, minSdk 26, compile/targetSdk 36.
+- Chaquopy 17.0.0 mit Python 3.10 und `youtube-transcript-api==1.2.4` ist für
+  `arm64-v8a` in die APK eingebettet und offline reproduzierbar gebaut.
+- Reale Primärtranskripte werden direkt auf dem Galaxy Tab abgerufen: manuelles
+  Deutsch, automatisch erzeugtes Deutsch/Englisch sowie ein langes Transkript
+  mit 7.311 Segmenten und 210.682 Zeichen.
 - Strikte YouTube-URL-Validierung und kanonische Video-URL.
 - Sicherer nativer Markdown-Renderer; Codeblöcke horizontal und lange Briefings
   vertikal auf dem Zieltablet scrollbar.
@@ -47,8 +52,6 @@ Bereits verifiziert:
 
 Noch nicht verifiziert und damit M0-blockierend:
 
-- Chaquopy und `youtube-transcript-api==1.2.4` in der APK.
-- Ein realer Primärtranskriptabruf direkt vom Zieltablet.
 - Direkter OpenAI-Responses-Aufruf aus der Android-App.
 - BYOK-Eingabe und verschlüsselte Speicherung der Provider-Keys über Proto
   DataStore + Tink AEAD mit Android-Keystore-geschütztem Keyset.
@@ -188,8 +191,9 @@ Android-App
 
 Chaquopy 17 unterstützt laut Hersteller AGP 7.3–9.2, Python 3.10–3.14 und
 minSdk 24. Das passt formal zu AGP 9.2.1, Python 3.10, minSdk 26 und dem
-ARM64-Zielgerät. Diese Kompatibilität ist **validiert**, aber erst nach einem
-erfolgreichen APK-Build und Live-Abruf auf dem Tablet **verifiziert**.
+ARM64-Zielgerät. APK-Build, Offline-Rebuild, Python-TLS und reale Abrufe auf dem
+Galaxy Tab sind verifiziert. Die Debug-APK ist mit eingebettetem Python rund
+27,8 MB groß; detaillierte Kaltstart-/Speichermessungen bleiben offen.
 
 ### Interne Provider-Schnittstellen
 
@@ -339,7 +343,7 @@ Video kann ohne PC oder LMAA-Server verarbeitet werden.
 | Risiko | Gegenmaßnahme |
 |---|---|
 | YouTube ändert die undokumentierte Caption-Schnittstelle | Paket pinnen, Adapter kapseln, lokale Fixtures, kontrollierter Updatepfad, optionaler RapidAPI-Fallback |
-| Chaquopy/Paket funktioniert auf Android anders als auf Desktop | M0-Gerätespike zuerst; Python-/ABI-Version pinnen |
+| Chaquopy/Paket funktioniert auf Android anders als auf Desktop | Geräteabruf ist verifiziert; Python-/ABI-/Paketversionen bleiben gepinnt und Teil der Regression |
 | Python erhöht APK-Größe oder Startzeit | nur `arm64-v8a`, Lazy-Start messen, keine unnötigen Pakete |
 | OpenAI-Key wird aus der Client-App missbraucht | persönliches BYOK, Sideload-Grenze, DataStore/Tink + Android Keystore, Backup-Ausschluss, restriktiver Projektkey, hartes Spend-Limit, Rotation |
 | Offizielles `datastore-tink` ist Alpha | M0-Dependency-/Gerätespike; alternativ stabiles Proto DataStore mit eigenem Tink-AEAD-Serializer, identische Sicherheitsinvarianten |

@@ -87,10 +87,10 @@ Der erste Verarbeitungsschritt normalisiert die URL und übernimmt ausschließli
 
 ## Datenfluss
 
-1. Die App sendet die kanonische HTTPS-URL und einen Stil-Snapshot.
-2. Das Backend validiert alle Eingaben und ruft die Provider nacheinander auf.
-3. Das Modell erzeugt das Briefing ohne Tools und ohne stillen Modell-Fallback.
-4. Die App speichert das abgeschlossene Ergebnis später unveränderlich in Room.
+1. Die App validiert die Video-ID und lädt das Transkript lokal über Chaquopy.
+2. Metadaten kommen schlüssellos über oEmbed direkt auf das Tablet.
+3. OpenAI erzeugt das Briefing ohne Tools und ohne stillen Modell-Fallback.
+4. Die App speichert das abgeschlossene Ergebnis unveränderlich in Room.
 
 > Lange Inhalte müssen lesbar bleiben, ohne dass Auswahl, Links oder Codeblöcke die vertikale Navigation blockieren.
 
