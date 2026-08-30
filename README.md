@@ -53,6 +53,12 @@ Bereits verifiziert:
   Ersetzungsfeld sind auf dem Zieltablet verifiziert.
 - Vollständiger Gerätepfad URL → lokales Transkript → oEmbed →
   `gpt-5.6-sol` → gerendertes Markdown ohne LMAA-Server.
+- Direkteingabe führt mit einer Nutzeraktion durch den vollständigen Pfad;
+  `ACTION_SEND` aus YouTube startet denselben Orchestrator ohne Folgeklick.
+- Fertige Briefings erscheinen in einer eigenen Detailansicht und werden mit
+  Video-/Transkript-/Stil-/Modell-Snapshots unveränderlich in Room gespeichert.
+- Die Historie ist nach Kaltstart offline verfügbar; zwei Analysen desselben
+  Videos bleiben als getrennte Briefings erhalten.
 - Umfangreicher Android-Map-Reduce-Smoke mit 7.311 Segmenten und 210.682
   Transkriptzeichen; das fertige Briefing renderte Pflichtstruktur, zahlreiche
   Zeitmarken und Programmierbegriffe mit Inline-Code.
@@ -64,6 +70,12 @@ eindeutig fehlender Captions wurde RapidAPI nicht ausgelöst. Der Android-
 Fallbackadapter und die Wahrheitstabelle sind vollständig mit MockWebServer
 verifiziert. Ein erfolgreicher Short mit aktivem CC bleibt ein sinnvoller
 Regressionstest, blockiert die technische M0-Abnahme aber nicht.
+
+Der erfolgreiche Gegenfall `Rq5iOD-mcEI` besitzt ein englisches Transkript und
+durchlief auf dem installierten Tablet mehrfach den vollständigen Short-Pfad.
+Das bestätigt: Shorts werden technisch unterstützt, aber nicht jeder Short
+stellt verwendbare Captions bereit; das Uploadalter allein ist dafür kein
+verlässliches Kriterium.
 
 Die detaillierte Anforderungsprüfung und Nachweismatrix steht in
 [`docs/anforderungs-vv.md`](docs/anforderungs-vv.md).
@@ -307,17 +319,24 @@ kontrollierte Fehlerbehandlung ohne unnötigen Fallback; RapidAPI-Stand bleibt
 
 ### M1 – Persistenter vertikaler Happy Path
 
-- Direkteingabe → lokales Transkript → oEmbed → OpenAI → Markdown-Detailansicht.
-- Room-Speicherung, Briefingliste, Lade-/Abbruch-/Fehlerzustand.
-- Video-Button mit kanonischer URL.
+- Eine Nutzeraktion → Linkprüfung → lokales Transkript → oEmbed → OpenAI →
+  eigene Markdown-Detailansicht.
+- Room-Speicherung mit exportiertem Schema, unveränderlichen Snapshots,
+  Briefingliste sowie Lade-/Abbruch-/Fehlerzustand.
+- Video-Button mit kanonischer URL; Markdown kopieren und teilen.
 
 **Abnahme:** Nach App-Neustart bleibt das Briefing offline lesbar; ein weiteres
 Video kann ohne PC oder LMAA-Server verarbeitet werden.
 
+**Status:** erfüllt auf dem Galaxy Tab S7+ unter Android 13. Zwei Briefings
+desselben Shorts blieben getrennt erhalten; Kaltstart und erneutes Öffnen aus
+Room erfolgten ohne neue Analyse.
+
 ### M2 – Android-Integration und Export
 
-- `ACTION_SEND` aus YouTube.
-- Markdown teilen und kopieren.
+- `ACTION_SEND` aus YouTube. **Vorgezogen erfüllt:** Der Link wird übernommen
+  und die Ein-Schritt-Pipeline automatisch gestartet.
+- Markdown teilen und kopieren. **Vorgezogen erfüllt.**
 - Wiederaufnahme nach Activity-/Prozessneustart.
 - Tablet-Layout, Querformat, Dark Mode und große Schrift.
 
@@ -326,6 +345,8 @@ Video kann ohne PC oder LMAA-Server verarbeitet werden.
 - Stil-CRUD, aktiver Stil, Default-Schutz und unveränderliche Snapshots.
 - Neuerstellung als separater historischer Eintrag.
 - RapidAPI-Opt-in, maskierter Key, Löschen, lokaler Monatszähler und Warnungen.
+- Eigene Settings-View für OpenAI-/RapidAPI-Keyverwaltung; keine Key-Eingabe
+  mehr im Home-View.
 
 ### M4 – Härtung und APK
 
@@ -377,6 +398,8 @@ Video kann ohne PC oder LMAA-Server verarbeitet werden.
 - [Android – Security Checklist: Keystore und Tink](https://developer.android.com/privacy-and-security/security-tips)
 - [AndroidX DataStore – Tink-Verschlüsselungsmodul](https://developer.android.com/jetpack/androidx/releases/datastore)
 - [Android – sensible Daten aus Backups ausschließen](https://developer.android.com/privacy-and-security/risks/backup-best-practices)
+- [AndroidX Room – stabile Version 2.8.4](https://developer.android.com/jetpack/androidx/releases/room)
+- [Kotlin Symbol Processing – offizieller Quickstart](https://kotlinlang.org/docs/ksp-quickstart.html)
 - [OpenAI API – Authentifizierung und Client-Key-Warnung](https://developers.openai.com/api/reference/overview)
 - [OpenAI – gpt-5.6-sol](https://developers.openai.com/api/docs/models/gpt-5.6-sol)
 - [YouTube oEmbed](https://www.youtube.com/oembed)

@@ -28,11 +28,15 @@ sealed interface MetadataFetchResult {
     data class Failure(val code: String) : MetadataFetchResult
 }
 
+internal interface MetadataProvider {
+    suspend fun fetch(videoId: String): MetadataFetchResult
+}
+
 class YoutubeOEmbedMetadataProvider internal constructor(
     private val client: OkHttpClient = ProviderHttpClient.shared,
     private val endpoint: HttpUrl = DEFAULT_ENDPOINT,
-) {
-    suspend fun fetch(videoId: String): MetadataFetchResult = withContext(Dispatchers.IO) {
+) : MetadataProvider {
+    override suspend fun fetch(videoId: String): MetadataFetchResult = withContext(Dispatchers.IO) {
         if (!VIDEO_ID_PATTERN.matches(videoId)) {
             return@withContext MetadataFetchResult.Failure("INVALID_VIDEO_ID")
         }

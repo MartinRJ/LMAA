@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
+    id("androidx.room")
     id("com.chaquo.python")
+    id("com.google.devtools.ksp")
     id("com.google.protobuf")
     id("org.jetbrains.kotlin.plugin.compose")
 }
@@ -68,6 +70,10 @@ protobuf {
     }
 }
 
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.08.00")
 
@@ -79,10 +85,13 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.datastore:datastore:1.2.1")
+    implementation("androidx.room:room-ktx:2.8.4")
+    implementation("androidx.room:room-runtime:2.8.4")
     implementation("com.google.crypto.tink:tink-android:1.23.0")
     implementation("com.google.protobuf:protobuf-javalite:4.32.1")
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
@@ -91,4 +100,5 @@ dependencies {
     testImplementation("org.json:json:20250517")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("androidx.room:room-testing:2.8.4")
 }
