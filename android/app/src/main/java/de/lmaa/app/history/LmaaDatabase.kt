@@ -13,6 +13,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Upsert
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "videos")
@@ -84,6 +86,22 @@ internal data class BriefingEntity(
     val createdAtEpochMillis: Long,
 )
 
+@Entity(
+    tableName = "analysis_jobs",
+    indices = [Index("status"), Index("createdAtEpochMillis")],
+)
+internal data class AnalysisJobEntity(
+    @PrimaryKey val jobId: String,
+    val canonicalUrl: String,
+    val status: String,
+    val stage: String?,
+    val briefingId: Long?,
+    val errorCode: String?,
+    val resultConsumedAtEpochMillis: Long?,
+    val createdAtEpochMillis: Long,
+    val updatedAtEpochMillis: Long,
+)
+
 internal data class BriefingHistoryRow(
     val briefingId: Long,
     val title: String,
@@ -128,6 +146,37 @@ internal interface BriefingDao {
 
     @Query(
         """
+        UPDATE analysis_jobs
+           SET status = 'SUCCEEDED', stage = 'PERSISTING', briefingId = :briefingId,
+               errorCode = NULL, updatedAtEpochMillis = :updatedAt
+         WHERE jobId = :jobId AND status IN ('ENQUEUED', 'RUNNING')
+        """,
+    )
+    suspend fun markAnalysisJobSucceeded(
+        jobId: String,
+        briefingId: Long,
+        updatedAt: Long,
+    ): Int
+
+    @Transaction
+    suspend fun persistCompletedAnalysisForJob(
+        jobId: String,
+        video: VideoEntity,
+        transcript: TranscriptEntity,
+        briefing: BriefingEntity,
+        completedAt: Long,
+    ): Long {
+        upsertVideo(video)
+        val transcriptId = insertTranscript(transcript)
+        val briefingId = insertBriefing(briefing.copy(transcriptId = transcriptId))
+        check(markAnalysisJobSucceeded(jobId, briefingId, completedAt) == 1) {
+            "Analyseauftrag ist nicht mehr aktiv"
+        }
+        return briefingId
+    }
+
+    @Query(
+        """
         SELECT b.id AS briefingId,
                v.title AS title,
                v.channelTitle AS channelTitle,
@@ -161,13 +210,96 @@ internal interface BriefingDao {
     suspend fun findBriefing(briefingId: Long): StoredBriefingRow?
 }
 
+@Dao
+internal interface AnalysisJobDao {
+    @Insert
+    suspend fun insert(job: AnalysisJobEntity)
+
+    @Query(
+        """
+        SELECT *
+          FROM analysis_jobs
+         WHERE status IN ('ENQUEUED', 'RUNNING')
+            OR resultConsumedAtEpochMillis IS NULL
+         ORDER BY createdAtEpochMillis DESC
+         LIMIT 1
+        """,
+    )
+    fun observeCurrent(): Flow<AnalysisJobEntity?>
+
+    @Query("SELECT * FROM analysis_jobs WHERE jobId = :jobId")
+    suspend fun find(jobId: String): AnalysisJobEntity?
+
+    @Query(
+        """
+        SELECT *
+          FROM analysis_jobs
+         WHERE status IN ('ENQUEUED', 'RUNNING')
+         ORDER BY createdAtEpochMillis ASC
+        """,
+    )
+    suspend fun findRecoverable(): List<AnalysisJobEntity>
+
+    @Query(
+        """
+        UPDATE analysis_jobs
+           SET status = 'RUNNING', stage = :stage, updatedAtEpochMillis = :updatedAt
+         WHERE jobId = :jobId AND status IN ('ENQUEUED', 'RUNNING')
+        """,
+    )
+    suspend fun markRunning(jobId: String, stage: String, updatedAt: Long): Int
+
+    @Query(
+        """
+        UPDATE analysis_jobs
+           SET status = 'ENQUEUED', updatedAtEpochMillis = :updatedAt
+         WHERE jobId = :jobId AND status = 'RUNNING'
+        """,
+    )
+    suspend fun markEnqueuedIfRunning(jobId: String, updatedAt: Long): Int
+
+    @Query(
+        """
+        UPDATE analysis_jobs
+           SET status = 'FAILED', errorCode = :errorCode, updatedAtEpochMillis = :updatedAt
+         WHERE jobId = :jobId AND status IN ('ENQUEUED', 'RUNNING')
+        """,
+    )
+    suspend fun markFailed(jobId: String, errorCode: String, updatedAt: Long): Int
+
+    @Query(
+        """
+        UPDATE analysis_jobs
+           SET status = 'CANCELLED', resultConsumedAtEpochMillis = :updatedAt,
+               updatedAtEpochMillis = :updatedAt
+         WHERE jobId = :jobId AND status IN ('ENQUEUED', 'RUNNING')
+        """,
+    )
+    suspend fun cancel(jobId: String, updatedAt: Long): Int
+
+    @Query(
+        """
+        UPDATE analysis_jobs
+           SET resultConsumedAtEpochMillis = :consumedAt, updatedAtEpochMillis = :consumedAt
+         WHERE jobId = :jobId AND status IN ('SUCCEEDED', 'FAILED', 'CANCELLED')
+        """,
+    )
+    suspend fun consumeResult(jobId: String, consumedAt: Long): Int
+}
+
 @Database(
-    entities = [VideoEntity::class, TranscriptEntity::class, BriefingEntity::class],
-    version = 1,
+    entities = [
+        VideoEntity::class,
+        TranscriptEntity::class,
+        BriefingEntity::class,
+        AnalysisJobEntity::class,
+    ],
+    version = 2,
     exportSchema = true,
 )
 internal abstract class LmaaDatabase : RoomDatabase() {
     abstract fun briefingDao(): BriefingDao
+    abstract fun analysisJobDao(): AnalysisJobDao
 
     companion object {
         private const val DATABASE_NAME = "lmaa-history.db"
@@ -180,7 +312,38 @@ internal abstract class LmaaDatabase : RoomDatabase() {
                 context.applicationContext,
                 LmaaDatabase::class.java,
                 DATABASE_NAME,
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2)
+                .build()
+                .also { instance = it }
+        }
+
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `analysis_jobs` (
+                        `jobId` TEXT NOT NULL,
+                        `canonicalUrl` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `stage` TEXT,
+                        `briefingId` INTEGER,
+                        `errorCode` TEXT,
+                        `resultConsumedAtEpochMillis` INTEGER,
+                        `createdAtEpochMillis` INTEGER NOT NULL,
+                        `updatedAtEpochMillis` INTEGER NOT NULL,
+                        PRIMARY KEY(`jobId`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_analysis_jobs_status` " +
+                        "ON `analysis_jobs` (`status`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_analysis_jobs_createdAtEpochMillis` " +
+                        "ON `analysis_jobs` (`createdAtEpochMillis`)",
+                )
+            }
         }
     }
 }

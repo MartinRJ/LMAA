@@ -37,7 +37,7 @@ internal class BriefingPipeline(
 ) {
     suspend fun analyze(
         input: String,
-        onStageChanged: (AnalysisStage) -> Unit = {},
+        onStageChanged: suspend (AnalysisStage) -> Unit = {},
     ): AnalysisResult {
         val parsed = when (val result = YoutubeUrlParser.parse(input)) {
             is YoutubeUrlParseResult.Success -> result

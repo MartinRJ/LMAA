@@ -34,7 +34,8 @@ Schlüssel geschützt und im No-Backup-Bereich gespeichert.
 - Chaquopy 17.0.0, Python 3.10, ausschließlich `arm64-v8a`
 - `youtube-transcript-api==1.2.4` mit vollständig gepinnten Python-Abhängigkeiten
 - Proto DataStore 1.2.1, Protobuf 4.32.1 und Tink Android 1.23.0
-- Room 2.8.4 mit KSP 2.3.10 und exportiertem Schema 1
+- Room 2.8.4 mit KSP 2.3.10 und exportiertem Schema 2
+- WorkManager 2.11.2 für persistente, langlebige Analyseaufträge
 - OkHttp/MockWebServer 5.3.0 für direkte Provideradapter und Vertragstests
 
 Der Build wird mit `gradlew.bat testDebugUnitTest assembleDebug lintDebug`
@@ -50,10 +51,10 @@ Am 2026-08-30 bestanden Unit-Tests, Debug-APK-Build und Android-Lint mit der
 vorhandenen SDK-Platform 36. `local.properties` ist ignoriert und muss lokal
 auf den jeweiligen SDK-Root verweisen. Die Debug-APK wurde anschließend auf dem
 Galaxy Tab S7+ 5G (`SM-T976B`, Android 13/API 33, One UI 5.1.1) installiert und
-kalt gestartet. Hochformat, initiales Layout und die Normalisierung einer
-`youtu.be`-URL zur kanonischen `youtube.com/watch`-URL wurden visuell und über
-die UI-Hierarchie geprüft; App-Abstürze traten nicht auf. Querformat, Dark Mode,
-große Schrift und Samsung-Sharesheet bleiben spätere Gerätesmokes.
+kalt gestartet. Hoch-/Querformat, Dark Mode, 150-%-Schriftgröße und die
+Normalisierung einer `youtu.be`-URL zur kanonischen `youtube.com/watch`-URL
+wurden visuell und über die UI-Hierarchie geprüft; App-Abstürze traten nicht
+auf. Der Samsung-/YouTube-Sharesheet-Smoke ist ebenfalls bestanden.
 
 Die direkte URL-Eingabe arbeitet mit einer Host-Whitelist, akzeptiert nur die
 geplanten URL-Formen und konstruiert Providerrequests ausschließlich aus der
@@ -67,8 +68,22 @@ kanonischem Video-Intent, Kopieren und Teilen. Room speichert normalisierte
 Video-, Transkript- und Briefing-Daten; Stiltext und Modell werden pro Briefing
 gesnapshottet. Zwei Analysen desselben Videos bleiben getrennte Datensätze. Die
 Historie und ihr Detail-View wurden nach APK-Update und Kaltstart ohne erneute
-Analyse geöffnet. Schema 1 liegt unter `app/schemas` und jede spätere Änderung
-benötigt Migration plus Migrationstest.
+Analyse geöffnet. Schema 2 liegt unter `app/schemas`; die Migration 1→2 ist
+durch einen datenbewahrenden Instrumentierungstest verifiziert. Jede spätere
+Änderung benötigt ebenfalls Migration plus Migrationstest.
+
+Vor dem ersten Providerrequest legt die App einen `analysis_jobs`-Datensatz an.
+Ein eindeutig benannter WorkManager-`CoroutineWorker` führt die Pipeline mit
+Netzwerkbedingung und Foreground-Benachrichtigung aus. Resultat und erfolgreicher
+Jobstatus werden atomar gespeichert. Ein Force-Stop während `BRIEFING` stellte
+nach Kaltstart URL und Phase wieder her und erzeugte exakt einen neuen
+Historieneintrag. Abbruch in der UI markiert zuerst den Room-Job und storniert
+danach die WorkManager-Arbeit.
+
+Bei ausreichender effektiver Breite zeigen Home und Detail zwei getrennt
+scrollbare Bereiche. Bei 150-%-Systemschrift wird einspaltig mit gestapelten,
+vollbreiten Aktionen gerendert. MaterialTheme und Systemleisten folgen dem
+System-Dark-Mode.
 
 Der lokale Primärpfad ist auf dem Galaxy Tab verifiziert. Reale Geräte-Smokes
 lieferten manuelles Deutsch (60 Segmente), automatisch erzeugtes Deutsch
@@ -98,9 +113,11 @@ getrennte Eigenschaften sind.
 
 Gerätetesthinweis: Gradles UTP-Task `connectedDebugAndroidTest` kann die Daten
 der installierten Debug-App ersetzen. Er darf deshalb nicht gegen die täglich
-genutzte Installation mit BYOK/Room-Historie laufen. Bis eine isolierte
-Test-Application-ID existiert, sind datenbewahrende gezielte Instrumentierung
-oder ein separates Testgerät/-profil zu verwenden.
+genutzte Installation mit BYOK/Room-Historie laufen. Für M2 wurden stattdessen
+vier gezielte Instrumentierungstests mit `adb shell am instrument` ausgeführt;
+BYOK-Maske und vier Historieneinträge blieben erhalten. Bis eine isolierte
+Test-Application-ID existiert, bleibt dieses Verfahren oder ein separates
+Testgerät/-profil verbindlich.
 
 UX-To-do für M3: OpenAI-/RapidAPI-Keyverwaltung in eine eigene Settings-View
 verschieben. Der Home-View soll keine Keyeingabe mehr enthalten.

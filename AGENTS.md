@@ -99,7 +99,7 @@ Keine geschätzten Prozentwerte verwenden.
 | Planung und Research | erledigt | 2026-08-30 | Anforderungen auf autonome Tablet-App korrigiert; V&V-Matrix und Primärquellen dokumentiert. |
 | M0 – Lokale Laufzeit und Spikes | erledigt | 2026-08-30 | Vollständiger Android-Pfad, BYOK, oEmbed/OpenAI, kurzer/langer/Short-Gerätesmoke und Android-RapidAPI-Mockvertrag sind verifiziert. |
 | M1 – Persistenter Happy Path | erledigt | 2026-08-30 | Ein-Schritt-Pipeline, Room-Historie, eigener Detail-View und Kaltstart-/Offline-Smoke sind erfüllt. |
-| M2 – Share und Export | in Arbeit | 2026-08-30 | `ACTION_SEND`, Copy/Share und Consume-once sind erfüllt; Prozesswiederaufnahme und Layoutvarianten bleiben offen. |
+| M2 – Share und Export | erledigt | 2026-08-30 | `ACTION_SEND`, Copy/Share, persistente WorkManager-Wiederaufnahme sowie Hoch-/Querformat, Dark Mode und 150-%-Schriftgröße sind auf Android 13 verifiziert. |
 | M3 – Stile und Fallback-Einstellungen | offen | 2026-08-30 | Als Nächstes eigene Settings-View statt Keyverwaltung im Home-View; danach Stil-CRUD, RapidAPI-Opt-in und Zähler. |
 | M4 – Härtung und APK | offen | 2026-08-29 | Fehlermatrix, Secret-Scan, Signing und Gerätesmokes. |
 
@@ -136,6 +136,7 @@ Keine geschätzten Prozentwerte verwenden.
 | 2026-08-30 | YouTube oEmbed als MVP-Metadatenpfad | Titel, Kanalname und Thumbnail genügen ohne zusätzlichen Key; weitere Felder bleiben nullable. |
 | 2026-08-29 | Room und Snapshots | Briefings bleiben offline und unveränderlich; Stiländerungen verändern keine Historie. |
 | 2026-08-30 | Room 2.8.4 mit exportiertem Schema 1 | Reifer stabiler AndroidX-Zweig statt des unmittelbar zuvor erschienenen Room-3-Major-Releases; Video, Transkript und Briefing werden normalisiert und Briefing-/Stil-/Modellstände historisiert. |
+| 2026-08-30 | Room-Schema 2 plus WorkManager 2.11.2 für Analyseaufträge | Persistenter Jobstatus vor Providerzugriffen, eindeutige Work-Namen, Foreground-Ausführung und atomare Ergebnistransaktion ermöglichen Wiederaufnahme ohne doppelte Briefings. |
 | 2026-08-30 | Share-Intent wird genau einmal konsumiert | Direkteingabe und Share nutzen denselben Orchestrator; ein konsumiertes Share-Event darf bei Rücknavigation keinen zweiten Providerrequest starten. |
 | 2026-08-29 | RapidAPI als Opt-in-Fallback | Schützt gegen geeignete Primärfehler; Quote und Kosten erfordern strikte Nachordnung. |
 | 2026-08-30 | Nativer Compose-Markdown-Renderer | Zielgerätetest deckt Sicherheitsregeln, Code sowie horizontalen und vertikalen Scroll ab. |
@@ -308,6 +309,41 @@ Android-Produktarchitektur.
 - Relevante Entscheidung: Share-Events werden nach Start atomar konsumiert;
   Rücknavigation darf keinen Providerrequest wiederholen.
 - RapidAPI: kein Aufruf; Entwicklungsstand unverändert 3/100.
+
+### 2026-08-30 – M2 mit Prozesswiederaufnahme und adaptivem Tablet-Layout abgeschlossen
+
+- Milestone/Scope: M2, DAT-001, UX-001, UI-002, INT-001 und TST-001.
+- Validierte Anforderung: Lange Analysen dürfen Activity-/Prozessneustarts nicht
+  an die Compose-Lebensdauer koppeln; das tägliche Tablet benötigt lesbare,
+  getrennt scrollbare Ansichten in Hoch-/Querformat, Dark Mode und großer
+  Systemschrift.
+- Umgesetzt: Room-Schema 2 mit `analysis_jobs`, Migration 1→2, atomare
+  Job-/Briefing-Transaktion, WorkManager-`CoroutineWorker` mit eindeutigem
+  Auftrag, Netzwerkbedingung, Foreground-Benachrichtigung und Reconciliation
+  nach Kaltstart. Home und Detail verwenden ab ausreichender effektiver Breite
+  Zwei-Spalten-Layouts; große Schrift fällt einspaltig zurück. Theme und
+  Systemleisten folgen dem System-Dark-Mode.
+- Verifiziert mit: Gradle `--offline testDebugUnitTest assembleDebug
+  assembleDebugAndroidTest lintDebug` (100 Tasks, erfolgreich), gezielter
+  Android-Instrumentierung für Job-Reopen, Migration 1→2, atomare Persistenz
+  und bestehende immutable Historie (4 Tests, alle bestanden).
+- Manuell geprüft auf: Galaxy Tab S7+ 5G, Android 13. Force-Stop während
+  `BRIEFING`, Kaltstart mit wiederhergestellter URL/Phase und Abschluss zu exakt
+  einem neuen Historieneintrag. Zwei getrennte Scrollbereiche im Querformat,
+  Dark-Mode-Kontrast sowie 150-%-Schrift in Home und Detail wurden visuell und
+  per UI-Hierarchie geprüft. Ein finaler Short-ohne-Captions-Smoke startete und
+  stoppte den WorkManager-Foreground-Dienst kontrolliert ohne Crash oder
+  Historieneintrag.
+- Offen/Blocker: keine für M2. M3 beginnt mit der verbindlichen Settings-View,
+  danach Stilverwaltung und RapidAPI-Opt-in/Zähler.
+- Testinfrastruktur: Keine UTP-Neuinstallation. Gezielte Instrumentierung und
+  `adb install -r` erhielten BYOK-Maske sowie vier persönliche
+  Historieneinträge; die Tablet-Systemwerte wurden nach Layouttests exakt
+  zurückgestellt.
+- Relevante Entscheidung: Der App-Abbruchknopf markiert den Room-Job zuerst als
+  abgebrochen und storniert danach WorkManager. Systemunterbrechungen bleiben
+  dagegen wiederanlauffähig.
+- RapidAPI: kein Live-Aufruf; Entwicklungsstand unverändert 3/100.
 
 ## Vorlage für Fortschrittseinträge
 

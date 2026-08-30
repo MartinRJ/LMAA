@@ -87,6 +87,7 @@ dependencies {
     implementation("androidx.datastore:datastore:1.2.1")
     implementation("androidx.room:room-ktx:2.8.4")
     implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.work:work-runtime:2.11.2")
     implementation("com.google.crypto.tink:tink-android:1.23.0")
     implementation("com.google.protobuf:protobuf-javalite:4.32.1")
     implementation("com.squareup.okhttp3:okhttp:5.3.0")
