@@ -62,14 +62,21 @@ Server-, Cloud- oder Pro-Ausbaustufen dürfen diesen Pfad nicht verdrängen.
     Link-Schemes begrenzen und keine Modell-Tools aktivieren.
 14. Alte Briefings sind unveränderliche historische Ergebnisse. Neuerstellung
     erzeugt einen neuen Datensatz mit Stil- und Modell-Snapshot.
-15. Jedes Briefing zeigt einen sichtbaren Link/Button zur ausschließlich aus
+15. Redaktionelle Vorgaben wie Pflichtabschnitte, Quellenkritik,
+    Unsicherheitsbehandlung, Zeitmarken und Markdown gehören ausschließlich in
+    den geschützten Default-Stil. Benutzerdefinierte Stile bestimmen Inhalt,
+    Auswahl, Struktur, Sprache und Ausgabeformat ohne globale Strukturprüfung.
+    Unveränderlich bleiben nur technische Sicherheitsgrenzen für UNTRUSTED-
+    Daten, deaktivierte Modell-Tools/externe Faktenquellen, leere Ausgaben und
+    aktives unsicheres Markup.
+16. Jedes Briefing zeigt einen sichtbaren Link/Button zur ausschließlich aus
     der validierten Video-ID konstruierten kanonischen HTTPS-URL.
-16. Keine vollständigen fremden Transkripte oder realen inhaltlichen
+17. Keine vollständigen fremden Transkripte oder realen inhaltlichen
     Providerantworten committen. Tests verwenden synthetische Fixtures.
-17. Jede Room-Schemaänderung braucht eine Migration und einen Migrationstest.
-18. Neue Dependencies werden begründet, kontrolliert gepinnt und auf Lizenz,
+18. Jede Room-Schemaänderung braucht eine Migration und einen Migrationstest.
+19. Neue Dependencies werden begründet, kontrolliert gepinnt und auf Lizenz,
     Wartungsstand, Android 13, ARM64 und Offline-Build-Reproduzierbarkeit geprüft.
-19. `connectedDebugAndroidTest` darf nicht gegen die täglich genutzte
+20. `connectedDebugAndroidTest` darf nicht gegen die täglich genutzte
     Debug-Installation laufen: Der Gradle-/UTP-Lauf kann App-Daten einschließlich
     BYOK und Historie ersetzen. Gerätetests stattdessen über eine isolierte
     Test-Application-ID oder datenbewahrend per gezieltem `adb install -r` plus
@@ -152,6 +159,7 @@ Keine geschätzten Prozentwerte verwenden.
 | 2026-08-29 | RapidAPI als Opt-in-Fallback | Schützt gegen geeignete Primärfehler; Quote und Kosten erfordern strikte Nachordnung. |
 | 2026-08-30 | Nativer Compose-Markdown-Renderer | Zielgerätetest deckt Sicherheitsregeln, Code sowie horizontalen und vertikalen Scroll ab. |
 | 2026-08-30 | Isolierte Application ID für Instrumentierung | `de.lmaa.app.testbed` verhindert, dass reguläre Gerätetests BYOK und Room-Historie der täglichen App ersetzen. |
+| 2026-08-30 | Redaktionelle Promptvorgaben liegen im Default-Stil | Benutzerdefinierte Stile sollen Struktur und Ausgabe möglichst frei kontrollieren; nur technische Daten-/Sicherheitsgrenzen bleiben global. |
 
 ## Änderungsprotokoll
 
@@ -475,6 +483,30 @@ Android-Produktarchitektur.
   werden.
 - Relevante Entscheidung: Das fotoabgeleitete Raster bleibt die farbige Icon-
   Quelle; Android erhält zusätzlich deklarative Adaptive-/Monochrom-Layer.
+
+### 2026-08-30 – Vollständig stilgesteuerte Briefing-Struktur
+
+- Milestone/Scope: Stilverwaltung nach M4, STY-002.
+- Validierte Anforderung: Pflichtabschnitte, Quellenkritik, Unsicherheiten,
+  Zeitmarken und Markdown sind Eigenschaften des geschützten Standardstils.
+  Eigene Stile müssen diese vollständig ersetzen können.
+- Umgesetzt: vollständiger bisheriger Briefing-Vertrag in `Standard`; format-
+  neutraler Final- und Map-Prompt; keine globale Überschriftenvalidierung;
+  mehrzeilige Stiltexte bleiben erhalten. `ensureDefault` aktualisiert nur die
+  aktuelle geschützte Default-Definition, nicht historische Briefing- oder
+  Auftragssnapshots.
+- Verifiziert mit: 52 Python-Tests; Android-JVM-Tests, Kotlin-Kompilierung,
+  Debug-/Release-Build und Lint; 13 isolierte Instrumentierungstests auf Android
+  13. Vertragstests decken freie Ein-Satz-Ausgabe, Default-Struktur,
+  Map-Reduce-Stilweitergabe, leere Ausgabe und unsicheres aktives Markup ab;
+  die Instrumentierung aktualisiert außerdem eine veraltete Default-Definition.
+- Manuell geprüft auf: Galaxy Tab S7+ mit dem temporären Stil `FreierTest` und
+  realem OpenAI-Lauf. Ergebnis war exakt ein kurzer Satz ohne Überschrift,
+  Liste, Zeitmarke oder Markdown-Struktur. Danach Testbriefing und Teststil
+  gelöscht und `Standard` wieder aktiviert. RapidAPI blieb bei 5/5.
+- Offen/Blocker: keine.
+- Relevante Entscheidung: Benutzerstil ist die höchste redaktionelle
+  Anweisungsebene; globale Prompts bleiben auf technische Grenzen beschränkt.
 
 ## Vorlage für Fortschrittseinträge
 

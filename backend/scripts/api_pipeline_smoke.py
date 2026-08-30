@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from lmaa_backend.briefings import REQUIRED_HEADINGS
+from lmaa_backend.briefings import DEFAULT_HEADINGS
 from lmaa_backend.config import DEFAULT_OPENAI_MODEL, Settings
 from lmaa_backend.main import create_app
 
@@ -63,7 +63,7 @@ def smoke_api_pipeline(video_id: str) -> dict[str, object]:
 
     payload = response.json()
     markdown = payload["briefing"]["markdown"]
-    if not all(heading in markdown for heading in REQUIRED_HEADINGS):
+    if not all(heading in markdown for heading in DEFAULT_HEADINGS):
         raise RuntimeError("Briefing enthält nicht alle Pflichtüberschriften")
 
     return {

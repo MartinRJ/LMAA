@@ -7,7 +7,7 @@ from typing import Any
 
 import provider_smoke
 
-from lmaa_backend.briefings import REQUIRED_HEADINGS, BriefingService, OpenAITextGenerator
+from lmaa_backend.briefings import DEFAULT_HEADINGS, BriefingService, OpenAITextGenerator
 from lmaa_backend.transcripts import PrimaryTranscriptProvider, RapidApiTranscriptProvider
 from lmaa_backend.youtube_url import normalize_youtube_url
 
@@ -79,7 +79,7 @@ def main() -> int:
         "map_chunk_count": result.map_chunk_count,
         "model": result.model,
         "markdown_character_count": len(result.markdown),
-        "validated_headings": list(REQUIRED_HEADINGS),
+        "validated_headings": list(DEFAULT_HEADINGS),
     }
     if args.transcript_provider == "rapidapi":
         usage = json.loads(provider_smoke.USAGE_FILE.read_text(encoding="utf-8"))["rapidapi"]

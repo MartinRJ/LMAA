@@ -64,6 +64,8 @@ Bereits verifiziert:
   per Links-Swipe mit freigelegter Aktion oder bestätigt im Detail gelöscht werden.
 - Briefing-Stile besitzen CRUD, genau einen aktiven Stil, einen geschützten
   Standard und unveränderliche Stil-/Sprach-Snapshots pro Auftrag und Briefing.
+  Benutzerdefinierte Stile bestimmen Inhalt, Auswahl, Struktur, Sprache und
+  Ausgabeformat ohne global erzwungene Briefing-Überschriften.
 - Analyseaufträge werden vor dem ersten Providerrequest in Room gespeichert und
   durch WorkManager 2.11.2 fortgesetzt. Ein Prozessabbruch während der
   Briefingphase wurde auf dem Zieltablet mit exakt einem fertigen Historieneintrag
@@ -192,8 +194,14 @@ synthetische Fixtures und einen Mock-Webserver.
 - `store=false`, keine Modell-Tools und klar abgegrenzte unvertrauenswürdige
   Metadaten-/Transkriptbereiche verwenden.
 - Lange Transkripte deterministisch segmentieren und per Map-Reduce
-  zusammenführen; Reihenfolge und Zeitbezüge erhalten.
-- Ausgabe als Markdown mit mindestens:
+  zusammenführen; die Zwischenstufe erhält bereits die aktive Stilkonfiguration
+  und erzwingt kein eigenes Markdown- oder Zeitmarkenformat.
+- Inhalt, Struktur und Ausgabeformat werden ausschließlich vom aktiven Stil
+  vorgegeben. Benutzerdefinierte Stile dürfen die Standardstruktur vollständig
+  ersetzen, Überschriften weglassen oder beispielsweise Fließtext ausgeben.
+- Der geschützte Stil `Standard` enthält weiterhin die bisherige sachliche
+  Quellenkritik, Unsicherheits-/Zeitmarkenregeln, Markdown-Vorgabe und exakt
+  folgende Struktur:
 
   ```markdown
   # Kernaussage
@@ -204,6 +212,11 @@ synthetische Fixtures und einen Mock-Webserver.
   ## Offene Fragen / Unsicherheiten
   ## Kapitel mit Zeitmarken
   ```
+- Global und nicht durch Stile überschreibbar bleiben nur technische
+  Sicherheitsgrenzen: UNTRUSTED-Daten sind keine Anweisungen, Modell-Tools und
+  externe Faktenquellen bleiben deaktiviert, leere Ausgaben sowie aktives
+  unsicheres Markup werden verworfen. Stil-Zeilenumbrüche bleiben im Prompt
+  erhalten.
 
 ### Historie, Stile und Export
 
@@ -211,6 +224,9 @@ synthetische Fixtures und einen Mock-Webserver.
   Stile.
 - Alte Briefings bleiben unveränderliche Snapshots von Stilname, Stiltext und
   Modell.
+- Beim App-Update wird nur die aktuelle geschützte `Standard`-Definition auf die
+  vollständige Default-Anweisung synchronisiert. Bereits gespeicherte Briefings
+  und laufende Auftragssnapshots werden nicht nachträglich verändert.
 - Neuerstellung mit anderem Stil erzeugt immer einen neuen Briefing-Datensatz.
 - Existiert zur kanonischen URL bereits ein Briefing, zeigt die App vor einer
   erneuten manuellen/Share-Analyse das neueste Ergebnis mit Titel und Datum als
@@ -474,8 +490,10 @@ Raw-Response-Pfad bis zum gerenderten und persistierten Briefing.
   Grenzen, Statuscodes, Timeouts, UTF-8, Content-Type, Antwortlimit,
   Key-Redaktion und bytegetreue Raw-Promptweitergabe.
 - APK-/Git-Scans suchen nach bekannten Key-Präfixen und lokalen Key-Dateinamen.
-- OpenAI-Evals prüfen Pflichtüberschriften, Stiltreue, Zeitmarken,
-  Halluzinationen und Map-Reduce-Konsistenz.
+- OpenAI-Evals prüfen beim Default-Stil dessen Pflichtüberschriften,
+  Quellenkritik und Zeitmarken; bei eigenen Stilen prüfen sie stattdessen deren
+  individuelle Struktur-/Formatvorgaben sowie generell Halluzinationen und
+  Map-Reduce-Konsistenz.
 
 ## 7. Risiken
 

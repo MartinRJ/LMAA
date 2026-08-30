@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import de.lmaa.app.DEFAULT_BRIEFING_STYLE
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -66,6 +67,26 @@ class BriefingStyleRepositoryInstrumentedTest {
         assertFailsWithMessage("STYLE_NAME_EXISTS") {
             repository.create(" code ", "Andere Details", "Englisch")
         }
+    }
+
+    @Test
+    fun ensureDefault_refreshesOnlyCurrentBuiltInDefinition() = runBlocking {
+        val builtIn = repository.ensureDefault()
+        assertEquals(
+            1,
+            database.briefingStyleDao().updateBuiltInDefaults(
+                id = builtIn.id,
+                instructions = "Veraltete Standardanweisung",
+                outputLanguage = "Alt",
+                updatedAt = 1L,
+            ),
+        )
+
+        val refreshed = repository.ensureDefault()
+
+        assertEquals(DEFAULT_BRIEFING_STYLE.instructions, refreshed.instructions)
+        assertEquals(DEFAULT_BRIEFING_STYLE.outputLanguage, refreshed.outputLanguage)
+        assertTrue(refreshed.isBuiltIn)
     }
 
     private suspend fun assertFailsWithMessage(expected: String, block: suspend () -> Unit) {
