@@ -183,11 +183,9 @@ Der Chat darf für aktuelle oder ausdrücklich recherchierte Fragen `web_search`
 |---|---|---|---|
 | FOC-001 | Zusätzliche Anweisung vor Modellstart; späte normale Ergebnisse bleiben erhalten | Atomare SQL-Statusgrenze, Stil-Snapshot mit Frage, kompilierter Instrumentierungstest | Frühe/späte Bedienung und Recreation auf Android 13/Samsung |
 | CHAT-001 | Persistenter Chat pro Briefing, keine Zusammenfassung | Room-Schema 4 mit FK-Cascade; WorkManager; JVM-Tests für vollständige Quelle, neueste Nachrichten, übergroßen Kontext | Geräte-UI, Kaltstart und reale Modellantwort |
-| MIG-001 | Accountloser App↔Extension↔Gerät-Transfer | Gemeinsames versioniertes JSON, strikte Validierung, stabile IDs, atomarer Merge, kompilierter Android-Roundtrip; Extension-Browser-Roundtrip bestanden | Übertragung vom alten auf das neue Samsung mit vorhandener Historie |
-| DAT-002 | Datenbewahrende Migration 3→4 | Tatsächliche Migrations-SQL gegen exportiertes Room-Schema 4 geprüft: identische Struktur, unveränderte Bestandszeile, stabile ID nach Reopen, Chat-Cascade; Instrumentierung 1→4 und 3→4 kompiliert | Room-Validierung auf Android-Gerät |
+| MIG-001 | Accountloser App↔Extension↔Gerät-Transfer | Android-Gerätetest für Wiederimport, neue Nachrichten und Rollback bei abweichender Sprache oder abweichendem Anbieter. Importzähler im Browsertest geprüft. App → App, Extension → App und App → Extension vom Nutzer bestätigt. | Bei Änderungen am Archivformat erneut prüfen |
+| DAT-002 | Datenbewahrende Migration 3→4 | SQL-Vertrag und isolierte Room-Gerätetests 1→4 und 3→4 bestanden. Auf dem S7+ waren nach dem Update von 0.1.0 alle acht vorab sichtbaren Historieneinträge wieder sichtbar. Ein bestehendes Briefing ließ sich öffnen. | Bei der nächsten Schemaänderung erneut prüfen |
 | INT-002 | Rückkehr zur App verarbeitet alten Share nicht erneut | Launch-Intent geleert, History-Flag ignoriert, pending Share im SavedInstanceState; zusätzlicher JVM-Vertrag bestanden | Samsung-Recents-/Prozess-Recreation-Smoke |
 | STY-003 | Aktiven Stil auch vor erster UI-Flow-Emission verwenden | Direkter DB-Lesezugriff; Test für Auswahl ohne Flow-Collector kompiliert; bestehende Prompt-/Map-Tests bestanden | Geräte-Kaltstart mit aktivem Custom-Stil |
 
-Gesamtprüfung: 56 JVM-Tests, `assembleDebug`, `assembleInstrumentedAndroidTest`,
-`lintDebug` und `python android/scripts/check-migration.py` bestanden. Keine
-Geräteabnahme oder Release-Signierung behauptet. Keine Modell-/RapidAPI-Livecalls.
+Die signierte App 0.3.0 wurde auf S7+ und S12+ über die bestehende Installation aktualisiert. Der Such- und Importstand bestand Android-Build und Lint, 18 isolierte Tests auf dem S7+ sowie 22 Extension-Tests und den Browsertest. Auf beiden Tablets war das Suchfeld sichtbar, in der Extension bestätigte der Nutzer das Filtern und Zurücksetzen der Liste.

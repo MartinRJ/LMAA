@@ -10,7 +10,9 @@ Galaxy Tab S7+ 5G mit Android 13 / One UI 5.1.1.
 > konfigurierbares Briefing erzeugt, Ergebnisse lokal historisiert und Markdown
 > teilen oder kopieren kann.
 
-## Erweiterung vom 8. November 2026
+## Android 0.3.0 · Stand vom 8. November 2026
+
+Unter **Bisherige Briefings → Titel oder Kanal suchen** filtert jede Eingabe die Liste sofort. Ein Teil des Titels oder Kanalnamens genügt. Groß- und Kleinschreibung spielen keine Rolle. Leere das Feld, um wieder alle Briefings zu sehen.
 
 - **Gezielte Frage** neben „Briefing erstellen“ wartet auf deine Anweisung. Vor
   der Modellphase wird der normale Auftrag atomar gestoppt. Hat die Modellphase
@@ -33,19 +35,13 @@ Galaxy Tab S7+ 5G mit Android 13 / One UI 5.1.1.
 - Importe ergänzen die lokale Historie, führen Chats anhand stabiler IDs zusammen
   und erzeugen bei wiederholtem Import keine Duplikate. Widersprüchliche IDs oder
   ungültige Dateien werden als gesamte Transaktion zurückgewiesen. Grenze: 64 MiB.
-  Bereits gelöschte Daten können nur aus einem vorhandenen Export/Altgerät kommen.
+  Die Erfolgsmeldung zählt neu angelegte Briefings und Chatnachrichten getrennt. Kommt beim Rückimport nur eine Antwort hinzu, erscheint **„Import abgeschlossen. Neue Briefings: 0 · Neue Chatnachrichten: 1“**. Eine abweichende Transkriptsprache oder ein anderer Anbieter für dieselbe Briefing-ID führt zum Abbruch des gesamten Imports.
 - Der ursprüngliche Share-Intent wird aus der Activity entfernt; Recents-Aufrufe
   werden ignoriert, noch nicht verarbeitete Shares über Activity-Recreation erhalten.
   Der Analysestart liest den aktiven Stil direkt aus Room statt aus einem eventuell
   noch nicht geladenen Compose-State.
 
-**Nachweise:** 56 JVM-Tests, Debug-APK, kompilierte Instrumentierung, Android Lint
-und SQL-Migrationsvertrag bestanden. Die neuen Instrumentierungstests für
-Migration 3→4, Import-Roundtrip, Chat-Cascade und die Pausegrenze sind vorbereitet;
-**auf einem Android-Gerät noch nicht ausgeführt**. Keine Live-Providerkosten bei
-diesen Prüfungen. Ein datenbewahrendes Update der täglichen Release-Installation
-benötigt weiterhin den vorhandenen privaten Release-Signierschlüssel; dieser ist
-nicht Teil des Repositories oder der hier verwendeten Cloud-Umgebung.
+Das signierte Update wurde auf dem **Galaxy Tab S7+ (Android 13)** und dem **Galaxy Tab S12+ (Android 17)** über die bestehende App installiert. Auf beiden Geräten war das Suchfeld sichtbar. Auf dem S7+ bestand die isolierte Gerätesuite mit 18 Tests, einschließlich Datenbankmigration, Wiederimport und Abbruch bei widersprüchlichen Transkriptmetadaten. Der Verlaufstransfer wurde im persönlichen Einsatz von App zu App sowie in beiden Richtungen zwischen App und Extension bestätigt.
 
 Format und verbleibende Plattformunterschiede: [Verlauf und Chat](docs/verlauf-und-chat.md).
 

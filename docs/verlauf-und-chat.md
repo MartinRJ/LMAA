@@ -16,6 +16,8 @@ Die Datei ist Klartext und enthält persönliche Inhalte. Sie sollte privat blei
 Der automatische Android-Cloud-/D2D-Backup-Ausschluss bleibt unverändert. Ein Export
 muss erfolgen, solange die Historie noch auf dem bisherigen Gerät vorhanden ist.
 
+**Beispiel S7+ → Extension → S12+:** Importiere den Export vom S7+ in die Extension und stelle dort eine Rückfrage zu einem Briefing. Exportiere den Verlauf der Extension und importiere ihn auf dem S12+. Liegt das Briefing dort schon vor, ergänzt der Import nur die fehlenden Chatnachrichten. Das funktioniert auch zurück aufs S7+. Zwei unabhängig erstellte Briefings zum selben Video haben verschiedene IDs und bleiben eigene Einträge.
+
 ## Gemeinsames Format, Version 1
 
 ```json
@@ -107,15 +109,12 @@ Eine Chrome-Extension kann Android WorkManager/Keystore nicht identisch abbilden
 
 Galaxy Tab S12 (SM-X846B, Android 17): Die isolierte Gerätesuite meldete `OK (17 tests)`. Der Archiv-Wiederimport vergleicht Zeitstempel numerisch. Das mit demselben Zertifikat signierte Update auf 0.3.0 wurde über der bestehenden Installation gestartet. Für den Chat-Websuchstand bestanden 57 Android-JVM- und 21 Extension-Tests sowie der Browsertest mit Quellenlink nach Archivtransfer. Ein separater API-Live-Test mit öffentlicher Frage lieferte einen Suchaufruf und eine URL-Zitation.
 
-## Verifikation vor dem Gerätetest
+Der Stand mit Live-Suche und Importzählern wurde auf S7+ und S12+ als signiertes Update installiert. Auf dem S7+ bestanden 18 isolierte Gerätetests, darunter der Test zum vollständigen Zurückrollen eines Imports bei abweichendem Anbieter oder abweichender Sprache. Für die Extension bestanden 22 Node-Tests und der Browsertest. Der Nutzer bestätigte App → App, Extension → App und App → Extension sowie die Live-Suche im Browser.
+
+## Frühere Prüfungen vor dem ersten Gerätetest
 
 - Android: 56 JVM-Tests, Debug-APK, Instrumentierungskompilierung und Lint bestanden.
 - `python android/scripts/check-migration.py`: tatsächliche 3→4-SQL gegen
   Room-Schema 4, Bestandsdaten, IDs nach Reopen, Fremdschlüssel/Cascade bestanden.
-- Neue Room-Gerätetests für 1→4/3→4, Import/Merge/Rollback und Pausegrenze sind
-  vorbereitet, aber mangels angeschlossenem Android-Gerät nicht ausgeführt.
 - Extension: 20 Node-Vertragstests und ein Playwright-Lauf mit echter entpackter
   Extension und ausschließlich synthetischen Providerantworten bestanden.
-- Geräte-Smokes, reale Modellantworten und das signierte Release-Update bleiben
-  für die Freigabe auf dem Samsung erforderlich. Niemals zum Installieren einer
-  anders signierten APK die vorhandene produktive App deinstallieren.

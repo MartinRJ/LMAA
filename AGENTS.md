@@ -559,9 +559,7 @@ Android-Produktarchitektur.
 - Verifiziert: 56 JVM-Tests, Debug-Build, Instrumentierungskompilierung,
   Android Lint, generiertes Schema 4 und tatsächliche Migrations-SQL gegen
   dieses Schema einschließlich Bestandsdaten, Reopen und Cascade.
-- Status: Implementierung abgeschlossen; Geräteabnahme in Arbeit/blockiert,
-  weil kein Android-Gerät angeschlossen ist. Neue Tests sind nicht auf dem
-  Zieltablet ausgeführt. Release-Signierschlüssel ist hier nicht vorhanden.
+- Beim ersten Build standen weder Zielgerät noch Signierschlüssel zur Verfügung. Anschließend wurde das signierte Release auf S7+ und S12+ installiert. Der Stand mit Suche und Importzählern bestand auf dem S7+ die isolierte Gerätesuite (18 Tests). Die Transferwege App → App, App → Extension und Extension → App wurden vom Nutzer bestätigt.
 - Entscheidung: expliziter Dateitransfer statt Browser-Bluetooth; keine Keys
   im Export und keine Änderung am automatischen Cloud-/D2D-Backup-Ausschluss.
   Exportdatei ist bewusst im Klartext, die UI nennt das vor dem Export.
