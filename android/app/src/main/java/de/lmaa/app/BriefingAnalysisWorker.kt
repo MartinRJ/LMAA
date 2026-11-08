@@ -146,43 +146,47 @@ internal class BriefingAnalysisWorker(
         .putLong(OUTPUT_BRIEFING_ID, briefingId)
         .build()
 
-    private fun foregroundInfo(jobId: UUID, stage: AnalysisStage): ForegroundInfo {
-        val notificationManager = applicationContext.getSystemService(NotificationManager::class.java)
-        notificationManager.createNotificationChannel(
-            NotificationChannel(
-                NOTIFICATION_CHANNEL_ID,
-                applicationContext.getString(R.string.analysis_notification_channel),
-                NotificationManager.IMPORTANCE_LOW,
-            ),
-        )
-        val openApp = PendingIntent.getActivity(
-            applicationContext,
-            jobId.hashCode(),
-            Intent(applicationContext, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_lmaa_notification)
-            .setContentTitle(applicationContext.getString(R.string.analysis_notification_title))
-            .setContentText(applicationContext.getString(stage.messageResource))
-            .setContentIntent(openApp)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setSilent(true)
-            .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-            .build()
-        return ForegroundInfo(
-            jobId.hashCode() and Int.MAX_VALUE,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-        )
-    }
+    private fun foregroundInfo(jobId: UUID, stage: AnalysisStage) =
+        applicationContext.workNotification(jobId, applicationContext.getString(stage.messageResource))
 
     companion object {
         internal const val INPUT_JOB_ID = "analysis_job_id"
         internal const val OUTPUT_BRIEFING_ID = "briefing_id"
-        private const val NOTIFICATION_CHANNEL_ID = "lmaa-analysis"
     }
+}
+
+private const val NOTIFICATION_CHANNEL_ID = "lmaa-analysis"
+
+internal fun Context.workNotification(jobId: UUID, status: String): ForegroundInfo {
+    val notificationManager = applicationContext.getSystemService(NotificationManager::class.java)
+    notificationManager.createNotificationChannel(
+        NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            applicationContext.getString(R.string.analysis_notification_channel),
+            NotificationManager.IMPORTANCE_LOW,
+        ),
+    )
+    val openApp = PendingIntent.getActivity(
+        applicationContext,
+        jobId.hashCode(),
+        Intent(applicationContext, MainActivity::class.java),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    val notification = NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_lmaa_notification)
+        .setContentTitle(applicationContext.getString(R.string.analysis_notification_title))
+        .setContentText(status)
+        .setContentIntent(openApp)
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setSilent(true)
+        .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+        .build()
+    return ForegroundInfo(
+        jobId.hashCode() and Int.MAX_VALUE,
+        notification,
+        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+    )
 }
 
 private val AnalysisStage.messageResource: Int

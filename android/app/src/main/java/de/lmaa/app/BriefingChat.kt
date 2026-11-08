@@ -14,6 +14,8 @@ import de.lmaa.app.secrets.ProviderSecretStore
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
@@ -56,44 +58,49 @@ internal fun transcriptContent(t: TranscriptEntity): String {
     }
 }
 
-internal class BriefingChatWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+internal open class BriefingChatWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+    protected open suspend fun generateAnswer(input: JSONArray): TextGenerationResult =
+        ProviderSecretStore.getInstance(applicationContext).useOpenAiKey { key ->
+            OpenAiResponsesClient().generate(key, CHAT_INSTRUCTIONS, input, 6000, webSearch = true)
+        }
+
+    override suspend fun getForegroundInfo() = applicationContext.workNotification(id, "Chatantwort wird erstellt …")
+
     override suspend fun doWork(): Result {
         val db = LmaaDatabase.getInstance(applicationContext)
         val dao = db.chatDao()
         val id = inputData.getString("message") ?: return Result.failure()
         val request = dao.find(id) ?: return Result.success()
-        if (!request.pending) return Result.success()
+        if (!request.pending || dao.clearIfAnswered(id) > 0) return Result.success()
         try {
-            val b = db.briefingDao().findBriefing(request.briefingId) ?: return Result.success()
+            val b = requireNotNull(db.briefingDao().findBriefing(request.briefingId))
             val t = db.briefingDao().briefingTranscript(request.briefingId)
             val source = "Video: ${b.canonicalUrl}\nUNTRUSTED_SOURCE:\n" + JSONObject()
                 .put("title", b.title).put("briefing", b.markdown)
                 .put("transcript", t?.let(::transcriptContent) ?: "Kein Transkript gespeichert").toString()
             val messages = dao.messages(request.briefingId).takeWhile { it.id != id } + request
             val input = chatContext(source, messages)
-            val result = ProviderSecretStore.getInstance(applicationContext).useOpenAiKey { key ->
-                OpenAiResponsesClient().generate(key, CHAT_INSTRUCTIONS, input, 6000, webSearch = true)
-            }
+            val result = generateAnswer(input)
             when (result) {
                 is TextGenerationResult.Success -> dao.finish(request, result.text)
-                is TextGenerationResult.Failure -> dao.state(id, false, result.code)
+                is TextGenerationResult.Failure -> dao.failIfPending(id, result.code)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            dao.state(id, false, if (e.message == "CHAT_CONTEXT_TOO_LARGE") e.message else "CHAT_FAILED")
+            dao.failIfPending(id, if (e.message == "CHAT_CONTEXT_TOO_LARGE") "CHAT_CONTEXT_TOO_LARGE" else "CHAT_FAILED")
         }
         return Result.success()
     }
 }
 
-internal fun enqueueChat(context: Context, messageId: String) {
-    WorkManager.getInstance(context).enqueueUniqueWork("lmaa-chat-$messageId", ExistingWorkPolicy.KEEP,
+private fun enqueueChat(context: Context, messageId: String, policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP) =
+    WorkManager.getInstance(context).enqueueUniqueWork("lmaa-chat-$messageId", policy,
         OneTimeWorkRequestBuilder<BriefingChatWorker>()
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setInputData(workDataOf("message" to messageId))
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .build())
-}
 
 @Composable
 internal fun BriefingChat(briefing: StoredBriefing) {
@@ -105,7 +112,22 @@ internal fun BriefingChat(briefing: StoredBriefing) {
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val busy = saving || messages.any { it.pending }
-    LaunchedEffect(messages) { messages.filter { it.pending }.forEach { enqueueChat(context, it.id) } }
+    LaunchedEffect(messages) {
+        messages.filter { it.pending }.forEach { message ->
+            launch {
+                try {
+                    enqueueChat(context, message.id).await()
+                    WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow("lmaa-chat-${message.id}")
+                        .first { work -> work.isNotEmpty() && work.all { it.state.isFinished } }
+                    if (dao.clearIfAnswered(message.id) == 0) dao.failIfPending(message.id, "CHAT_INTERRUPTED")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    dao.failIfPending(message.id, "CHAT_SCHEDULING_FAILED")
+                }
+            }
+        }
+    }
     Column(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Chat zum Briefing", style = MaterialTheme.typography.titleLarge)
         Text("Bei Bedarf recherchiert der Chat im Web. Quellen stehen direkt in der Antwort.")
@@ -115,7 +137,20 @@ internal fun BriefingChat(briefing: StoredBriefing) {
                 Column(Modifier.padding(12.dp)) {
                     Text(if (message.role == "user") "Du" else "LMAA", style = MaterialTheme.typography.labelLarge)
                     SafeMarkdown(message.content)
-                    if (message.pending) Text("Antwort wird erstellt …")
+                    if (message.pending) {
+                        Text("Antwort wird erstellt …")
+                        TextButton(enabled = !saving, onClick = {
+                            saving = true
+                            scope.launch {
+                                try {
+                                    WorkManager.getInstance(context).cancelUniqueWork("lmaa-chat-${message.id}").await()
+                                    dao.failIfPending(message.id, "CHAT_INTERRUPTED")
+                                } catch (e: CancellationException) { throw e }
+                                catch (_: Exception) { error = "Abbruch fehlgeschlagen. Bitte erneut versuchen." }
+                                finally { saving = false }
+                            }
+                        }) { Text("Antwort abbrechen") }
+                    }
                     if (message.errorCode != null || (message.role == "user" && messages.lastOrNull()?.id == message.id && !message.pending)) {
                         Text(if (message.errorCode == "CHAT_CONTEXT_TOO_LARGE")
                             "Transkript, Briefing und letzte Frage überschreiten das Kontextbudget. Bitte eine kürzere Frage verwenden."
@@ -125,12 +160,11 @@ internal fun BriefingChat(briefing: StoredBriefing) {
                             saving = true
                             scope.launch {
                                 try {
-                                    WorkManager.getInstance(context)
-                                        .getWorkInfosForUniqueWorkFlow("lmaa-chat-${message.id}")
-                                        .first { work -> work.all { it.state.isFinished } }
                                     dao.state(message.id, true, null)
-                                    enqueueChat(context, message.id)
-                                } finally { saving = false }
+                                    enqueueChat(context, message.id, ExistingWorkPolicy.APPEND_OR_REPLACE).await()
+                                } catch (e: CancellationException) { throw e }
+                                catch (_: Exception) { dao.failIfPending(message.id, "CHAT_SCHEDULING_FAILED") }
+                                finally { saving = false }
                             }
                         }) { Text("Erneut versuchen") }
                     }
@@ -145,9 +179,16 @@ internal fun BriefingChat(briefing: StoredBriefing) {
                 try {
                     val message = ChatMessageEntity(UUID.randomUUID().toString(), briefing.briefingId,
                         "user", draft.trim(), maxOf(System.currentTimeMillis(), (messages.lastOrNull()?.ts ?: 0) + 1), true)
-                    dao.insert(message)
+                    withContext(NonCancellable) {
+                        dao.insert(message)
+                        try {
+                            enqueueChat(context, message.id).await()
+                        } catch (e: Exception) {
+                            dao.failIfPending(message.id, "CHAT_SCHEDULING_FAILED")
+                            throw e
+                        }
+                    }
                     draft = ""
-                    enqueueChat(context, message.id)
                     error = null
                 } catch (_: Exception) { error = "Nachricht konnte nicht gespeichert werden." }
                 finally { saving = false }

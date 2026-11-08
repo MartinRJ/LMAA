@@ -7,11 +7,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -35,16 +39,37 @@ internal sealed interface MarkdownBlock {
     data class Numbered(val number: Int, val text: String) : MarkdownBlock
     data class Quote(val text: String) : MarkdownBlock
     data class Code(val text: String) : MarkdownBlock
+    data class Table(val header: List<String>, val align: List<TextAlign>, val rows: List<List<String>>) : MarkdownBlock
     data object Divider : MarkdownBlock
 }
 
 private val headingPattern = Regex("^(#{1,6})\\s+(.+)$")
-private val numberedPattern = Regex("^(\\d+)\\.\\s+(.+)$")
+private val numberedPattern = Regex("^(\\d{1,9})\\.\\s+(.+)$")
 private const val linkDestinationPattern = """(?:[^()\s]+|\([^()\s]*\))+"""
 private val markdownLinkPattern = Regex("""\[([^]]+)]\(($linkDestinationPattern)\)""")
 private val inlinePattern = Regex(
-    """\[([^]]+)]\(($linkDestinationPattern)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*""",
+    """\[([^]]+)]\(($linkDestinationPattern)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*]+)\*|(?<!\w)__([^_]+)__(?!\w)|(?<!\w)_([^_]+)_(?!\w)|~~([^~]+)~~""",
 )
+
+private val tablePipe = Regex("""(?<!\\)\|""")
+private val tableDash = Regex(":?-+:?")
+private val thematicBreak = Regex(""" {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})""")
+
+private fun cells(line: String): List<String> =
+    line.trim().removePrefix("|").let { if (it.endsWith("\\|")) it else it.removeSuffix("|") }
+        .split(tablePipe).map { it.trim().replace("\\|", "|") }
+
+private fun tableAlignment(lines: List<String>, index: Int): List<TextAlign>? {
+    val separator = lines.getOrNull(index + 1) ?: return null
+    if ('|' !in lines[index] || '|' !in separator) return null
+    val cols = cells(separator)
+    if (!cols.all { tableDash.matches(it) } || cols.size != cells(lines[index]).size) return null
+    return cols.map { when {
+        it.startsWith(':') && it.endsWith(':') -> TextAlign.Center
+        it.endsWith(':') -> TextAlign.End
+        else -> TextAlign.Start
+    } }
+}
 
 internal fun parseMarkdown(markdown: String): List<MarkdownBlock> {
     val lines = markdown.replace("\r\n", "\n").replace('\r', '\n').lines()
@@ -69,6 +94,18 @@ internal fun parseMarkdown(markdown: String): List<MarkdownBlock> {
             continue
         }
 
+        val align = tableAlignment(lines, index)
+        if (align != null) {
+            val header = cells(line)
+            index += 2
+            val rows = mutableListOf<List<String>>()
+            while (index < lines.size && '|' in lines[index] && !startsBlock(lines[index])) {
+                rows += cells(lines[index++]).take(header.size)
+            }
+            blocks += MarkdownBlock.Table(header, align, rows)
+            continue
+        }
+
         val headingMatch = headingPattern.matchEntire(line)
         if (headingMatch != null) {
             blocks += MarkdownBlock.Heading(
@@ -80,8 +117,8 @@ internal fun parseMarkdown(markdown: String): List<MarkdownBlock> {
         }
 
         when {
-            line == "---" || line == "***" -> blocks += MarkdownBlock.Divider
-            line.startsWith("- ") || line.startsWith("* ") -> {
+            thematicBreak.matches(line) -> blocks += MarkdownBlock.Divider
+            line.startsWith("- ") || line.startsWith("* ") || line.startsWith("+ ") -> {
                 blocks += MarkdownBlock.Bullet(line.drop(2))
             }
             numberedPattern.matches(line) -> {
@@ -92,7 +129,7 @@ internal fun parseMarkdown(markdown: String): List<MarkdownBlock> {
             else -> {
                 val paragraph = mutableListOf(line)
                 index += 1
-                while (index < lines.size && lines[index].isNotBlank() && !startsBlock(lines[index])) {
+                while (index < lines.size && lines[index].isNotBlank() && !startsBlock(lines[index]) && tableAlignment(lines, index) == null) {
                     paragraph += lines[index]
                     index += 1
                 }
@@ -112,8 +149,7 @@ private fun startsBlock(line: String): Boolean =
         line.startsWith("* ") ||
         line.startsWith("> ") ||
         line.trimStart().startsWith("```") ||
-        line == "---" ||
-        line == "***"
+        line.startsWith("+ ") || thematicBreak.matches(line)
 
 internal fun isAllowedMarkdownLink(rawUrl: String): Boolean = runCatching {
     val uri = URI(rawUrl)
@@ -133,7 +169,7 @@ internal fun SafeMarkdown(
     markdown: String,
     modifier: Modifier = Modifier,
 ) {
-    val blocks = parseMarkdown(markdown)
+    val blocks = remember(markdown) { parseMarkdown(markdown) }
     SelectionContainer {
         Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             blocks.forEach { block -> MarkdownBlockView(block) }
@@ -174,6 +210,25 @@ private fun MarkdownBlockView(block: MarkdownBlock) {
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.bodyMedium,
         )
+        is MarkdownBlock.Table -> {
+            val widths = block.header.mapIndexed { col, label ->
+                val length = maxOf(label.length, block.rows.maxOfOrNull { it.getOrNull(col)?.length ?: 0 } ?: 0)
+                (24 + 8 * length.coerceAtMost(32)).coerceIn(88, 280).dp
+            }
+            Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                (listOf(block.header) + block.rows).forEachIndexed { row, cells ->
+                    Row {
+                        widths.forEachIndexed { col, width ->
+                            Text(inlineMarkdown(cells.getOrNull(col).orEmpty()),
+                                modifier = Modifier.width(width).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                    .padding(8.dp),
+                                textAlign = block.align[col],
+                                fontWeight = if (row == 0) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+            }
+        }
         MarkdownBlock.Divider -> androidx.compose.material3.HorizontalDivider()
     }
 }
@@ -236,6 +291,9 @@ private fun inlineMarkdown(text: String): AnnotatedString {
                     match.groupValues[4],
                     SpanStyle(fontFamily = FontFamily.Monospace, background = Color.LightGray),
                 )
+                match.groupValues[6].isNotEmpty() -> pushStyled(match.groupValues[6], SpanStyle(fontWeight = FontWeight.Bold))
+                match.groupValues[7].isNotEmpty() -> pushStyled(match.groupValues[7], SpanStyle(fontStyle = FontStyle.Italic))
+                match.groupValues[8].isNotEmpty() -> pushStyled(match.groupValues[8], SpanStyle(textDecoration = TextDecoration.LineThrough))
                 match.groupValues[5].isNotEmpty() -> pushStyled(
                     match.groupValues[5],
                     SpanStyle(fontStyle = FontStyle.Italic),

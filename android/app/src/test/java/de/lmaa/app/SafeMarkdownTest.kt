@@ -33,6 +33,19 @@ kein HTML
     }
 
     @Test
+    fun pipeTableAfterProseKeepsEscapedPipesAndAlignment() {
+        val blocks = parseMarkdown("Intro\nA | B\n:- | -:\nX\\|Y | **Text**\n\n___\n+ Eintrag")
+        assertEquals(MarkdownBlock.Paragraph("Intro"), blocks.first())
+        val table = blocks[1] as MarkdownBlock.Table
+        assertEquals(listOf("A", "B"), table.header)
+        assertEquals(androidx.compose.ui.text.style.TextAlign.End, table.align[1])
+        assertEquals(listOf(listOf("X|Y", "**Text**")), table.rows)
+        assertEquals(MarkdownBlock.Divider, blocks[2])
+        assertEquals(MarkdownBlock.Bullet("Eintrag"), blocks[3])
+        assertTrue(parseMarkdown("A | B\n|-|").none { it is MarkdownBlock.Table })
+    }
+
+    @Test
     fun `only safe https links are interactive`() {
         assertTrue(isAllowedMarkdownLink("https://www.youtube.com/watch?v=ABCDEFGHIJK"))
         assertFalse(isAllowedMarkdownLink("http://example.com"))

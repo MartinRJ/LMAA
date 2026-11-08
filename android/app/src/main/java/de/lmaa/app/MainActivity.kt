@@ -539,6 +539,7 @@ private fun LmaaHomeScreen(
                 Column {
                     Text("Die gezielte Erstellung startet erst nach dem Absenden. Ein bereits begonnenes Briefing wird zusätzlich in der Historie gespeichert.")
                     OutlinedTextField(value = focusText, onValueChange = { focusText = it.take(4000) },
+                        modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 8,
                         label = { Text("Was soll das Briefing behandeln?") })
                 }
             },

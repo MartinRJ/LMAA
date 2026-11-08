@@ -45,6 +45,21 @@ class HistoryTransferInstrumentedTest {
             assertTrue(b.chatDao().messages(entry.id).isEmpty())
         } }
     }
+    @Test fun existingReplyReleasesPendingQuestionAndCannotDuplicate() = runBlocking {
+        database().use { db ->
+            HistoryArchive(db).import(fixture)
+            val dao = db.chatDao()
+            val request = requireNotNull(dao.find("message-1"))
+            dao.state(request.id, true, null)
+            dao.insert(ChatMessageEntity(request.id + "-reply", request.briefingId, "assistant", "Antwort", 3))
+            dao.finish(request, "Neue Antwort")
+            assertFalse(requireNotNull(dao.find(request.id)).pending)
+            assertEquals(listOf("Warum?", "Antwort"), dao.messages(request.briefingId).map { it.content })
+            dao.failIfPending(request.id, "CHAT_INTERRUPTED")
+            assertNull(requireNotNull(dao.find(request.id)).errorCode)
+        }
+    }
+
     @Test fun transcriptMetadataConflictRollsBackEarlierInserts() = runBlocking {
         database().use { db ->
             val archive = HistoryArchive(db)

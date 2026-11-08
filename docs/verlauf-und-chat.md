@@ -65,6 +65,12 @@ neue Briefings nutzen UUIDs. Extension-Altdaten behalten ihre vorhandenen IDs.
 Chat-IDs bleiben auf allen Geräten gleich. Chatnachrichten werden beim Löschen des
 zugehörigen Android-Briefings durch den Fremdschlüssel mitgelöscht.
 
+## Chat beim App-Wechsel auf Android
+
+Nach dem Senden stehen Frage und Bearbeitungszustand in Room. WorkManager plant den Chat als beschleunigten Auftrag ein und kann ihn bei ausgeschöpftem Kontingent regulär ausführen. Beim Wechsel in eine andere App darf der Auftrag weiterlaufen. Eine fertige Antwort und die Freigabe der Frage werden gemeinsam gespeichert. Ausstehende Fragen lassen sich abbrechen und erneut versuchen, etwa wenn das Gerät offline ist. Android kann geplante Arbeit bei fehlender Verbindung oder knappen Ressourcen verzögern.
+
+Briefing und Chat rendern Pipe-Tabellen einschließlich Spaltenausrichtung und horizontalem Scrollen. Das Feld „Gezielte Frage“ nutzt schon vor der ersten Eingabe die verfügbare Dialogbreite.
+
 ## Websuche im Chat
 
 Android und Extension bieten `gpt-5.6-sol` im Briefing-Chat das Responses-Tool `web_search` mit automatischer Auswahl an. Suchergebnisse gelten als unvertrauenswürdige Inhalte. HTTPS-Quellen werden direkt in der Antwort als Markdownlinks gespeichert und über das vorhandene Archivformat übertragen. Die Briefing-Erstellung verwendet weiterhin eine leere Toolliste.
