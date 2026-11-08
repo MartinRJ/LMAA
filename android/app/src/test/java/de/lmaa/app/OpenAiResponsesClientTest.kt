@@ -43,6 +43,28 @@ class OpenAiResponsesClientTest {
     }
 
     @Test
+    fun chatEnablesOnlyWebSearchAndPersistsInlineCitationAsMarkdown() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val response = """{"output":[{"type":"web_search_call"},{"type":"message","content":[{"type":"output_text","text":"😀 Fakt. Weiter.","annotations":[{"type":"url_citation","end_index":7,"url":"https://example.org/a(b)"},{"type":"url_citation","url":"javascript:alert(1)"}]}]}]}"""
+            server.enqueue(MockResponse.Builder().code(200).body(response).build())
+            val result = OpenAiResponsesClient(endpoint = server.url("/v1/responses"))
+                .generate("synthetic", CHAT_INSTRUCTIONS, org.json.JSONArray(), 6000, webSearch = true)
+            val body = JSONObject(requireNotNull(server.takeRequest().body).utf8())
+            assertEquals("auto", body.getString("tool_choice"))
+            val tools = body.getJSONArray("tools")
+            assertEquals(1, tools.length())
+            assertEquals("web_search", tools.getJSONObject(0).getString("type"))
+            assertFalse(body.getBoolean("store"))
+            assertEquals("😀 Fakt. [Quelle: example.org](https://example.org/a%28b%29) Weiter.",
+                (result as TextGenerationResult.Success).text)
+        } finally {
+            server.close()
+        }
+    }
+
+    @Test
     fun httpErrorIsNotRetried() = runBlocking {
         val server = MockWebServer()
         server.start()

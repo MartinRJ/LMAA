@@ -59,7 +59,7 @@ Server-, Cloud- oder Pro-Ausbaustufen dürfen diesen Pfad nicht verdrängen.
     Nachweis für lokale Android-Anforderungen.
 13. Eingehende URLs, Providerdaten, Transkripte und Modell-Markdown sind
     unvertrauenswürdig. Hosts/IDs validieren, HTML nicht ausführen,
-    Link-Schemes begrenzen und keine Modell-Tools aktivieren.
+    Link-Schemes begrenzen. Briefings verwenden keine Modell-Tools. Im Briefing-Chat ist ausschließlich die optionale OpenAI-Websuche erlaubt; Webinhalte sind unvertrauenswürdig.
 14. Alte Briefings sind unveränderliche historische Ergebnisse. Neuerstellung
     erzeugt einen neuen Datensatz mit Stil- und Modell-Snapshot.
 15. Redaktionelle Vorgaben wie Pflichtabschnitte, Quellenkritik,

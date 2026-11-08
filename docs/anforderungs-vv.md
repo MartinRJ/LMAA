@@ -173,6 +173,10 @@ LMAA-Backend-Host voraussetzen.
 - [Android – Backup-Sicherheit](https://developer.android.com/privacy-and-security/risks/backup-best-practices)
 
 
+## Websuche im Briefing-Chat
+
+Der Chat darf für aktuelle oder ausdrücklich recherchierte Fragen `web_search` verwenden. Zitate sind als sichtbare HTTPS-Links an der Antwort zu speichern und beim Verlaufstransfer mitzunehmen. Die Briefing-Pipeline erzeugt ihre Ausgabe weiter ohne Websuche.
+
 ## Ergänzung 2026-11-08 – gezielte Fragen, Chat, Migration und Regressionen
 
 | ID | Anforderung | Nachweis in dieser Änderung | Noch offen |

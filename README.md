@@ -19,6 +19,7 @@ Galaxy Tab S7+ 5G mit Android 13 / One UI 5.1.1.
 - **Chat zum Briefing** speichert alle Nachrichten pro Briefing in Room und führt
   Antworten über WorkManager aus. Der Request enthält das vollständige gespeicherte
   Transkript und Briefing sowie den neuesten passenden Ausschnitt des Chats.
+  Bei aktuellen Fragen kann der Chat im Web recherchieren. Quellenlinks bleiben auch beim Verlaufstransfer erhalten.
   Es gibt keine Chat-Zusammenfassung. Das konservative Eingabebudget beträgt
   300.000 UTF-8-Bytes einschließlich Reserve pro Nachricht; ältere Nachrichten
   entfallen ausschließlich im Request. Passen Quelle und letzte Frage allein

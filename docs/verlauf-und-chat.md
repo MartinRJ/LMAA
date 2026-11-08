@@ -63,6 +63,10 @@ neue Briefings nutzen UUIDs. Extension-Altdaten behalten ihre vorhandenen IDs.
 Chat-IDs bleiben auf allen Geräten gleich. Chatnachrichten werden beim Löschen des
 zugehörigen Android-Briefings durch den Fremdschlüssel mitgelöscht.
 
+## Websuche im Chat
+
+Android und Extension bieten `gpt-5.6-sol` im Briefing-Chat das Responses-Tool `web_search` mit automatischer Auswahl an. Suchergebnisse gelten als unvertrauenswürdige Inhalte. HTTPS-Quellen werden direkt in der Antwort als Markdownlinks gespeichert und über das vorhandene Archivformat übertragen. Die Briefing-Erstellung verwendet weiterhin eine leere Toolliste.
+
 ## Chat-Kontext und ältere Daten
 
 Jede Anfrage enthält Quelle und Briefing sowie einen zusammenhängenden neuesten
@@ -99,7 +103,11 @@ Browser-Fetch bietet keine getrennten Connect-/Read-/Write-Timeouts wie OkHttp.
 Browser-Clipboard, Teilen und Shortcuts folgen den jeweiligen Plattform-APIs.
 Eine Chrome-Extension kann Android WorkManager/Keystore nicht identisch abbilden.
 
-## Verifikation
+## Gerätetest und Release vom 2026-11-08
+
+Galaxy Tab S12 (SM-X846B, Android 17): Die isolierte Gerätesuite meldete `OK (17 tests)`. Der Archiv-Wiederimport vergleicht Zeitstempel numerisch. Das mit demselben Zertifikat signierte Update auf 0.3.0 wurde über der bestehenden Installation gestartet. Für den Chat-Websuchstand bestanden 57 Android-JVM- und 21 Extension-Tests sowie der Browsertest mit Quellenlink nach Archivtransfer. Ein separater API-Live-Test mit öffentlicher Frage lieferte einen Suchaufruf und eine URL-Zitation.
+
+## Verifikation vor dem Gerätetest
 
 - Android: 56 JVM-Tests, Debug-APK, Instrumentierungskompilierung und Lint bestanden.
 - `python android/scripts/check-migration.py`: tatsächliche 3→4-SQL gegen

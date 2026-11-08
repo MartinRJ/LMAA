@@ -26,6 +26,7 @@ internal class OpenAiResponsesClient(
         instructions: String,
         input: Any,
         maxOutputTokens: Int,
+        webSearch: Boolean = false,
     ): TextGenerationResult = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext TextGenerationResult.Failure("OPENAI_KEY_MISSING")
         val payload = JSONObject()
@@ -36,6 +37,10 @@ internal class OpenAiResponsesClient(
             .put("reasoning", JSONObject().put("effort", "medium"))
             .put("store", false)
             .put("tools", JSONArray())
+        if (webSearch) {
+            payload.getJSONArray("tools").put(JSONObject().put("type", "web_search"))
+            payload.put("tool_choice", "auto")
+        }
         val request = Request.Builder()
             .url(endpoint)
             .header("Authorization", "Bearer $apiKey")
@@ -47,7 +52,7 @@ internal class OpenAiResponsesClient(
                 if (!response.isSuccessful) {
                     return@withContext TextGenerationResult.Failure("OPENAI_HTTP_${response.code}")
                 }
-                val text = extractOutputText(JSONObject(response.body.string()))
+                val text = extractOutputText(JSONObject(response.body.string()), webSearch)
                 if (text.isBlank()) TextGenerationResult.Failure("OPENAI_EMPTY_OUTPUT")
                 else TextGenerationResult.Success(text.trim())
             }
@@ -60,7 +65,7 @@ internal class OpenAiResponsesClient(
         }
     }
 
-    private fun extractOutputText(root: JSONObject): String {
+    private fun extractOutputText(root: JSONObject, webSearch: Boolean): String {
         val output = root.getJSONArray("output")
         return buildList {
             repeat(output.length()) { outputIndex ->
@@ -69,10 +74,33 @@ internal class OpenAiResponsesClient(
                 val content = item.optJSONArray("content") ?: return@repeat
                 repeat(content.length()) { contentIndex ->
                     val part = content.getJSONObject(contentIndex)
-                    if (part.optString("type") == "output_text") add(part.getString("text"))
+                    if (part.optString("type") == "output_text") {
+                        add(if (webSearch) citedText(part) else part.getString("text"))
+                    }
                 }
             }
         }.joinToString("\n")
+    }
+
+    private fun citedText(part: JSONObject): String {
+        val text = part.getString("text")
+        val annotations = part.optJSONArray("annotations") ?: return text
+        val length = text.codePointCount(0, text.length)
+        val links = mutableListOf<Pair<Int, String>>()
+        for (i in 0 until annotations.length()) {
+            val citation = annotations.optJSONObject(i) ?: continue
+            val url = citation.optString("url")
+            if (citation.optString("type") != "url_citation" || !isAllowedMarkdownLink(url)) continue
+            val end = citation.optInt("end_index", length)
+            val offset = text.offsetByCodePoints(0, if (end in 0..length) end else length)
+            val href = url.replace("(", "%28").replace(")", "%29")
+            if (text.take(offset).endsWith("]($url)") && url == href) continue
+            val host = java.net.URI(url).host
+            links += offset to " [Quelle: $host]($href)"
+        }
+        return StringBuilder(text).apply {
+            links.asReversed().sortedByDescending { it.first }.forEach { (offset, link) -> insert(offset, link) }
+        }.toString()
     }
 
     companion object {
