@@ -53,8 +53,9 @@ internal class HistoryArchive(private val db: LmaaDatabase) {
                 val existing = dao.findPortable(b.getString("id"))
                 val id = if (existing != null) {
                     val old = record(existing)
-                    for (key in listOf("videoId", "markdown", "ts", "model", "styleName", "styleInstructions", "styleOutputLanguage")) {
-                        require(old.get(key) == b.get(key)) { "ARCHIVE_ID_CONFLICT" }
+                    require(existing.createdAtEpochMillis == b.getLong("ts")) { "ARCHIVE_ID_CONFLICT" }
+                    for (key in listOf("videoId", "markdown", "model", "styleName", "styleInstructions", "styleOutputLanguage")) {
+                        require(old.getString(key) == b.getString(key)) { "ARCHIVE_ID_CONFLICT" }
                     }
                     require(old.getJSONObject("transcript").getString("content") == b.getJSONObject("transcript").getString("content")) { "ARCHIVE_ID_CONFLICT" }
                     existing.id
