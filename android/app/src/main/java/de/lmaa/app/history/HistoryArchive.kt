@@ -10,6 +10,8 @@ import org.json.JSONObject
 
 internal const val ARCHIVE_LIMIT = 64 * 1024 * 1024
 
+internal data class ImportCounts(val briefings: Int, val messages: Int)
+
 internal class HistoryArchive(private val db: LmaaDatabase) {
     private val dao = db.briefingDao()
 
@@ -43,10 +45,11 @@ internal class HistoryArchive(private val db: LmaaDatabase) {
         }
     }
 
-    suspend fun import(text: String): Int = withContext(Dispatchers.IO) {
+    suspend fun import(text: String): ImportCounts = withContext(Dispatchers.IO) {
         val archive = validateArchive(text)
         db.withTransaction {
-            var added = 0
+            var addedBriefings = 0
+            var addedMessages = 0
             val records = archive.getJSONArray("briefings")
             for (i in 0 until records.length()) {
                 val b = records.getJSONObject(i)
@@ -57,7 +60,11 @@ internal class HistoryArchive(private val db: LmaaDatabase) {
                     for (key in listOf("videoId", "markdown", "model", "styleName", "styleInstructions", "styleOutputLanguage")) {
                         require(old.getString(key) == b.getString(key)) { "ARCHIVE_ID_CONFLICT" }
                     }
-                    require(old.getJSONObject("transcript").getString("content") == b.getJSONObject("transcript").getString("content")) { "ARCHIVE_ID_CONFLICT" }
+                    val localTranscript = old.getJSONObject("transcript")
+                    val incomingTranscript = b.getJSONObject("transcript")
+                    for (key in listOf("content", "language", "provider")) {
+                        require(localTranscript.getString(key) == incomingTranscript.getString(key)) { "ARCHIVE_ID_CONFLICT" }
+                    }
                     existing.id
                 } else {
                     val videoId = b.getString("videoId")
@@ -68,7 +75,7 @@ internal class HistoryArchive(private val db: LmaaDatabase) {
                     val transcriptId = dao.insertTranscript(TranscriptEntity(videoId = videoId,
                         provider = t.getString("provider"), languageCode = t.getString("language"),
                         isGenerated = false, segmentsJson = "[]", plainText = t.getString("content"), fetchedAtEpochMillis = b.getLong("ts")))
-                    added++
+                    addedBriefings++
                     dao.insertBriefing(BriefingEntity(videoId = videoId, portableId = b.getString("id"),
                         transcriptId = transcriptId, styleNameSnapshot = b.getString("styleName"),
                         styleInstructionsSnapshot = b.getString("styleInstructions"),
@@ -81,8 +88,10 @@ internal class HistoryArchive(private val db: LmaaDatabase) {
                     val m = messages.getJSONObject(j)
                     val message = ChatMessageEntity(m.getString("id"), id, m.getString("role"), m.getString("content"), m.getLong("ts"))
                     val old = db.chatDao().find(message.id)
-                    if (old == null) db.chatDao().insert(message)
-                    else require(old.copy(pending = false, errorCode = null) == message) { "ARCHIVE_MESSAGE_CONFLICT" }
+                    if (old == null) {
+                        db.chatDao().insert(message)
+                        addedMessages++
+                    } else require(old.copy(pending = false, errorCode = null) == message) { "ARCHIVE_MESSAGE_CONFLICT" }
                 }
             }
             val styles = archive.optJSONArray("styles") ?: JSONArray()
@@ -97,7 +106,7 @@ internal class HistoryArchive(private val db: LmaaDatabase) {
                 while (known.any { it.name.equals(name, ignoreCase = true) }) name = style.getString("name").take(60) + " (Import ${suffix++})"
                 repo.create(name, style.getString("instructions"), style.getString("outputLanguage"))
             }
-            added
+            ImportCounts(addedBriefings, addedMessages)
         }
     }
 }

@@ -799,7 +799,16 @@ private fun HistoryContent(
                 )
             }
         } else {
-            history.forEach { item ->
+            var query by rememberSaveable { mutableStateOf("") }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Titel oder Kanal suchen") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            val term = query.trim()
+            history.filter { it.title.contains(term, ignoreCase = true) || it.channelTitle.contains(term, ignoreCase = true) }.forEach { item ->
                 HistoryItem(
                     item = item,
                     onOpen = onOpenHistory,

@@ -24,21 +24,46 @@ class HistoryTransferInstrumentedTest {
     @Test fun portableRoundtripMergesMessagesAndRejectsConflictsAtomically() = runBlocking {
         database().use { a -> database().use { b ->
             val first = HistoryArchive(a); val second = HistoryArchive(b)
-            assertEquals(1, first.import(fixture))
+            assertEquals(ImportCounts(1, 1), first.import(fixture))
             val exported = first.export()
-            assertEquals(1, second.import(exported))
-            assertEquals(0, second.import(exported))
+            assertEquals(ImportCounts(1, 1), second.import(exported))
+            assertEquals(ImportCounts(0, 0), second.import(exported))
             val entry = b.briefingDao().exportBriefings().single()
             assertEquals("Warum?", b.chatDao().messages(entry.id).single().content)
             val conflict = JSONObject(exported)
             conflict.getJSONArray("briefings").getJSONObject(0).put("markdown", "Widerspruch")
             try { second.import(conflict.toString()); fail("Conflict must reject") } catch (_: IllegalArgumentException) {}
             assertEquals("[12:34] Inhalt", b.briefingDao().exportBriefings().single().markdown)
-            assertEquals(0, first.import(second.export()))
+            val extended = JSONObject(exported)
+            extended.getJSONArray("briefings").getJSONObject(0).getJSONArray("messages").put(
+                JSONObject().put("id", "reply").put("role", "assistant").put("content", "Antwort").put("ts", 3),
+            )
+            assertEquals(ImportCounts(0, 1), second.import(extended.toString()))
+            assertEquals(ImportCounts(0, 1), first.import(second.export()))
+            assertEquals(ImportCounts(0, 0), first.import(second.export()))
             b.briefingDao().deleteBriefingWithOwnedData(entry.id, 3)
             assertTrue(b.chatDao().messages(entry.id).isEmpty())
         } }
     }
+    @Test fun transcriptMetadataConflictRollsBackEarlierInserts() = runBlocking {
+        database().use { db ->
+            val archive = HistoryArchive(db)
+            archive.import(fixture)
+            for ((key, value) in mapOf("language" to "en", "provider" to "rapidapi")) {
+                val incoming = JSONObject(fixture)
+                val records = incoming.getJSONArray("briefings")
+                val conflict = JSONObject(records.getJSONObject(0).toString())
+                conflict.getJSONObject("transcript").put(key, value)
+                records.getJSONObject(0).put("id", "fresh").getJSONArray("messages").getJSONObject(0).put("id", "fresh-msg")
+                records.put(conflict)
+                val error = runCatching { archive.import(incoming.toString()) }.exceptionOrNull()
+                assertEquals("ARCHIVE_ID_CONFLICT", error?.message)
+                assertEquals(1, db.briefingDao().exportBriefings().size)
+                assertNull(db.chatDao().find("fresh-msg"))
+            }
+        }
+    }
+
     @Test fun pauseBoundaryAndColdStyleSelection() = runBlocking {
         database().use { db ->
             val styles = BriefingStyleRepository(db.briefingStyleDao())

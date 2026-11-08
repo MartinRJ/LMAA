@@ -54,7 +54,7 @@ Markdown werden weiter als untrusted behandelt.
 Grenzen: 64 MiB pro Datei, 10.000 Briefings, 100.000 Nachrichten pro Briefing,
 1.000 eigene Stile. Neue Formatversionen werden kontrolliert zurückgewiesen.
 Importierte Inhalte ersetzen keine bestehenden historischen Ergebnisse. Bei
-abweichendem Inhalt unter derselben ID wird der gesamte Import abgebrochen.
+abweichendem Inhalt unter derselben ID wird der gesamte Import abgebrochen. Dabei werden auch Sprache und Anbieter des Transkripts verglichen. Beide Apps melden nach erfolgreichem Import die Anzahl neu hinzugefügter Briefings und Chatnachrichten. Ein unveränderter Wiederimport ergibt für beide Zähler null.
 Android verwendet eine Room-Transaktion; die Extension validiert und führt alles
 zusammen, bevor sie einen gemeinsamen Storage-Schreibvorgang ausführt.
 

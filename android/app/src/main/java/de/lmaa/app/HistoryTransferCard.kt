@@ -51,7 +51,7 @@ internal fun HistoryTransferCard() {
                     }
                     archive.import(Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString())
                 }
-                status = "$count neue Briefings importiert; Chats zusammengeführt. Vorhandene Daten bleiben erhalten."
+                status = "Import abgeschlossen. Neue Briefings: ${count.briefings} · Neue Chatnachrichten: ${count.messages}"
             } catch (_: Exception) { status = "Import abgelehnt: ungültige, zu große oder widersprüchliche Datei. Bestehende Daten bleiben erhalten." }
             finally { busy = false }
         }
