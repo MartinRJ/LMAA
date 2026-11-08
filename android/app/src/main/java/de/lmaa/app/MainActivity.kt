@@ -89,7 +89,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        acceptShareIntent(intent)
+        if (savedInstanceState == null) acceptShareIntent(intent)
+        else savedInstanceState.getString("pendingShareText")?.let {
+            shareSequence = savedInstanceState.getLong("pendingShareSequence")
+            incomingShare.value = IncomingShare(shareSequence, it)
+        }
         setContent {
             LmaaTheme {
                 val context = LocalContext.current.applicationContext
@@ -144,6 +148,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        incomingShare.value?.let {
+            outState.putString("pendingShareText", it.text)
+            outState.putLong("pendingShareSequence", it.sequence)
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -155,10 +167,14 @@ class MainActivity : ComponentActivity() {
             action = intent?.action,
             mimeType = intent?.type,
             sharedText = intent?.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString(),
+            launchFlags = intent?.flags ?: 0,
         )
         if (sharedText != null) {
             shareSequence += 1
             incomingShare.value = IncomingShare(shareSequence, sharedText)
+            // Remove the consumed payload from the Activity's retained launch intent.
+            intent?.removeExtra(Intent.EXTRA_TEXT)
+            setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
         }
     }
 }
@@ -167,9 +183,11 @@ internal fun extractIncomingYoutubeText(
     action: String?,
     mimeType: String?,
     sharedText: String?,
+    launchFlags: Int = 0,
 ): String? {
     val candidate = sharedText.takeIf {
-        action == Intent.ACTION_SEND && mimeType == "text/plain"
+        action == Intent.ACTION_SEND && mimeType == "text/plain" &&
+            launchFlags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0
     }
     return candidate?.trim()?.takeIf(String::isNotEmpty)
 }
@@ -298,14 +316,18 @@ private fun LmaaHomeScreen(
     var input by rememberSaveable { mutableStateOf("") }
     var localErrorCode by rememberSaveable { mutableStateOf<String?>(null) }
     var enqueueInProgress by remember { mutableStateOf(false) }
+    var focused by rememberSaveable { mutableStateOf(false) }
+    var focusText by rememberSaveable { mutableStateOf("") }
+    var focusUrl by rememberSaveable { mutableStateOf("") }
+    var backgroundJobId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingDuplicate by remember { mutableStateOf<PendingDuplicateRequest?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val history by historyRepository.history.collectAsState(initial = emptyList())
     val activeStyle by styleRepository.active.collectAsState(initial = null)
     val currentJob by analysisJobRepository.current.collectAsState(initial = null)
-    val analysisState = analysisUiState(currentJob, localErrorCode, enqueueInProgress)
+    val analysisState = analysisUiState(currentJob?.takeUnless { it.isBackground }, localErrorCode, enqueueInProgress)
 
-    fun startAnalysis(rawInput: String, checkForDuplicate: Boolean = true) {
+    fun startAnalysis(rawInput: String, checkForDuplicate: Boolean = true, question: String = "") {
         if (enqueueInProgress) return
         input = rawInput
         localErrorCode = null
@@ -333,14 +355,14 @@ private fun LmaaHomeScreen(
                 enqueueInProgress = false
                 return@launch
             }
-            currentJob?.takeIf { !it.status.isTerminal }?.let {
+            currentJob?.takeIf { !it.status.isTerminal && !it.isBackground && it.jobId.toString() != backgroundJobId }?.let {
                 workScheduler.cancel(analysisJobRepository, it.jobId)
             }
             currentJob?.takeIf { it.status.isTerminal }?.let {
                 analysisJobRepository.consumeResult(it.jobId)
             }
             val selectedStyle = try {
-                activeStyle ?: styleRepository.ensureDefault()
+                styleRepository.selected()
             } catch (_: Exception) {
                 localErrorCode = "STYLE_LOAD_ERROR"
                 enqueueInProgress = false
@@ -364,11 +386,20 @@ private fun LmaaHomeScreen(
             val job = try {
                 analysisJobRepository.create(
                     canonicalUrl = parsed.canonicalUrl,
-                    style = selectedStyle.snapshot(),
+                    style = selectedStyle.snapshot().let { if (question.isBlank()) it else it.copy(
+                        instructions = it.instructions + "\n\nGezielte Frage (hat redaktionell Vorrang):\n" + question,
+                    ) },
                     styleId = selectedStyle.id,
                 )
             } catch (_: Exception) {
                 localErrorCode = "LOCAL_JOB_ERROR"
+                enqueueInProgress = false
+                return@launch
+            }
+            if (focused && question.isBlank()) {
+                backgroundJobId = job.jobId.toString()
+                analysisJobRepository.keepInBackground(job.jobId)
+                analysisJobRepository.pauseBeforeGeneration(job.jobId)
                 enqueueInProgress = false
                 return@launch
             }
@@ -402,13 +433,13 @@ private fun LmaaHomeScreen(
                 localErrorCode = "BRIEFING_NOT_FOUND"
             } else {
                 analysisJobRepository.consumeResult(job.jobId)
-                onBriefingReady(stored)
+                if (!focused && job.jobId.toString() != backgroundJobId) onBriefingReady(stored)
             }
         }
     }
 
     LaunchedEffect(currentJob?.jobId) {
-        currentJob?.takeIf { !it.status.isTerminal }?.let { input = it.canonicalUrl }
+        currentJob?.takeIf { !it.status.isTerminal && !it.isBackground }?.let { input = it.canonicalUrl }
     }
 
     LaunchedEffect(incomingShare?.sequence, secretStoreState) {
@@ -452,6 +483,19 @@ private fun LmaaHomeScreen(
                 }
             },
             onAnalyze = { startAnalysis(input) },
+            onFocused = {
+                focusUrl = input
+                focused = true
+                coroutineScope.launch {
+                    currentJob?.takeIf { !it.status.isTerminal }?.let { job ->
+                        backgroundJobId = job.jobId.toString()
+                        analysisJobRepository.keepInBackground(job.jobId)
+                        if (analysisJobRepository.pauseBeforeGeneration(job.jobId)) {
+                            workScheduler.cancel(analysisJobRepository, job.jobId)
+                        }
+                    }
+                }
+            },
             onCancelAnalysis = {
                 currentJob?.let { job ->
                     coroutineScope.launch { workScheduler.cancel(analysisJobRepository, job.jobId) }
@@ -485,6 +529,27 @@ private fun LmaaHomeScreen(
                 }
             },
             contentPadding = contentPadding,
+        )
+    }
+    if (focused) {
+        AlertDialog(
+            onDismissRequest = { focused = false },
+            title = { Text("Gezielte Frage") },
+            text = {
+                Column {
+                    Text("Die gezielte Erstellung startet erst nach dem Absenden. Ein bereits begonnenes Briefing wird zusätzlich in der Historie gespeichert.")
+                    OutlinedTextField(value = focusText, onValueChange = { focusText = it.take(4000) },
+                        label = { Text("Was soll das Briefing behandeln?") })
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = focusText.isNotBlank() && !enqueueInProgress, onClick = {
+                    focused = false
+                    startAnalysis(focusUrl, checkForDuplicate = false, question = focusText)
+                    focusText = ""
+                }) { Text("Briefing erstellen") }
+            },
+            dismissButton = { TextButton(onClick = { focused = false }) { Text("Schließen") } },
         )
     }
     pendingDuplicate?.let { duplicate ->
@@ -556,6 +621,7 @@ private fun HomeContent(
     input: String,
     onInputChanged: (String) -> Unit,
     onAnalyze: () -> Unit,
+    onFocused: () -> Unit,
     onCancelAnalysis: () -> Unit,
     activeStyle: BriefingStyle?,
     analysisState: AnalysisUiState,
@@ -588,6 +654,7 @@ private fun HomeContent(
                         input = input,
                         onInputChanged = onInputChanged,
                         onAnalyze = onAnalyze,
+                        onFocused = onFocused,
                         onCancelAnalysis = onCancelAnalysis,
                         activeStyle = activeStyle,
                         analysisState = analysisState,
@@ -615,6 +682,7 @@ private fun HomeContent(
                     input = input,
                     onInputChanged = onInputChanged,
                     onAnalyze = onAnalyze,
+                    onFocused = onFocused,
                     onCancelAnalysis = onCancelAnalysis,
                     activeStyle = activeStyle,
                     analysisState = analysisState,
@@ -631,6 +699,7 @@ private fun HomePrimaryContent(
     input: String,
     onInputChanged: (String) -> Unit,
     onAnalyze: () -> Unit,
+    onFocused: () -> Unit,
     onCancelAnalysis: () -> Unit,
     activeStyle: BriefingStyle?,
     analysisState: AnalysisUiState,
@@ -676,12 +745,15 @@ private fun HomePrimaryContent(
             enabled = analysisState !is AnalysisUiState.Loading,
             isError = analysisState is AnalysisUiState.Error && analysisState.code.startsWith("URL_"),
         )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(
             onClick = onAnalyze,
             enabled = analysisState !is AnalysisUiState.Loading,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.weight(1f),
         ) {
             Text(stringResource(R.string.create_briefing_one_step))
+        }
+        OutlinedButton(onClick = onFocused, enabled = input.isNotBlank()) { Text("Gezielte Frage") }
         }
 
         when (analysisState) {
@@ -888,6 +960,7 @@ private fun BriefingDetailScreen(
                             .verticalScroll(rememberScrollState()),
                     ) {
                         SafeMarkdown(briefing.markdown)
+                        BriefingChat(briefing)
                     }
                 }
             } else {
@@ -905,6 +978,7 @@ private fun BriefingDetailScreen(
                         onRequestDelete = { confirmDelete = true },
                     )
                     SafeMarkdown(briefing.markdown)
+                    BriefingChat(briefing)
                 }
             }
         }

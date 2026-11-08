@@ -21,6 +21,13 @@ class IncomingYoutubeIntentTest {
     }
 
     @Test
+    fun `history relaunch does not redeliver the old share`() {
+        assertNull(extractIncomingYoutubeText(Intent.ACTION_SEND, "text/plain", url,
+            Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))
+        assertEquals(url, extractIncomingYoutubeText(Intent.ACTION_SEND, "text/plain", url, 0))
+    }
+
+    @Test
     fun `unrelated or empty intents are ignored`() {
         assertNull(
             extractIncomingYoutubeText(

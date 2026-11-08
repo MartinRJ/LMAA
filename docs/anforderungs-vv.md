@@ -171,3 +171,19 @@ LMAA-Backend-Host voraussetzen.
 - [Android – Security Checklist: Keystore und Tink](https://developer.android.com/privacy-and-security/security-tips)
 - [AndroidX DataStore – Tink-Verschlüsselungsmodul](https://developer.android.com/jetpack/androidx/releases/datastore)
 - [Android – Backup-Sicherheit](https://developer.android.com/privacy-and-security/risks/backup-best-practices)
+
+
+## Ergänzung 2026-11-08 – gezielte Fragen, Chat, Migration und Regressionen
+
+| ID | Anforderung | Nachweis in dieser Änderung | Noch offen |
+|---|---|---|---|
+| FOC-001 | Zusätzliche Anweisung vor Modellstart; späte normale Ergebnisse bleiben erhalten | Atomare SQL-Statusgrenze, Stil-Snapshot mit Frage, kompilierter Instrumentierungstest | Frühe/späte Bedienung und Recreation auf Android 13/Samsung |
+| CHAT-001 | Persistenter Chat pro Briefing, keine Zusammenfassung | Room-Schema 4 mit FK-Cascade; WorkManager; JVM-Tests für vollständige Quelle, neueste Nachrichten, übergroßen Kontext | Geräte-UI, Kaltstart und reale Modellantwort |
+| MIG-001 | Accountloser App↔Extension↔Gerät-Transfer | Gemeinsames versioniertes JSON, strikte Validierung, stabile IDs, atomarer Merge, kompilierter Android-Roundtrip; Extension-Browser-Roundtrip bestanden | Übertragung vom alten auf das neue Samsung mit vorhandener Historie |
+| DAT-002 | Datenbewahrende Migration 3→4 | Tatsächliche Migrations-SQL gegen exportiertes Room-Schema 4 geprüft: identische Struktur, unveränderte Bestandszeile, stabile ID nach Reopen, Chat-Cascade; Instrumentierung 1→4 und 3→4 kompiliert | Room-Validierung auf Android-Gerät |
+| INT-002 | Rückkehr zur App verarbeitet alten Share nicht erneut | Launch-Intent geleert, History-Flag ignoriert, pending Share im SavedInstanceState; zusätzlicher JVM-Vertrag bestanden | Samsung-Recents-/Prozess-Recreation-Smoke |
+| STY-003 | Aktiven Stil auch vor erster UI-Flow-Emission verwenden | Direkter DB-Lesezugriff; Test für Auswahl ohne Flow-Collector kompiliert; bestehende Prompt-/Map-Tests bestanden | Geräte-Kaltstart mit aktivem Custom-Stil |
+
+Gesamtprüfung: 56 JVM-Tests, `assembleDebug`, `assembleInstrumentedAndroidTest`,
+`lintDebug` und `python android/scripts/check-migration.py` bestanden. Keine
+Geräteabnahme oder Release-Signierung behauptet. Keine Modell-/RapidAPI-Livecalls.

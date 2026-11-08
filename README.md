@@ -10,6 +10,44 @@ Galaxy Tab S7+ 5G mit Android 13 / One UI 5.1.1.
 > konfigurierbares Briefing erzeugt, Ergebnisse lokal historisiert und Markdown
 > teilen oder kopieren kann.
 
+## Erweiterung vom 8. November 2026
+
+- **Gezielte Frage** neben „Briefing erstellen“ wartet auf deine Anweisung. Vor
+  der Modellphase wird der normale Auftrag atomar gestoppt. Hat die Modellphase
+  bereits begonnen, bleibt das normale Ergebnis zusätzlich in der Historie.
+  Die Anweisung wird mit dem Stil im neuen Auftrag/Briefing gespeichert.
+- **Chat zum Briefing** speichert alle Nachrichten pro Briefing in Room und führt
+  Antworten über WorkManager aus. Der Request enthält das vollständige gespeicherte
+  Transkript und Briefing sowie den neuesten passenden Ausschnitt des Chats.
+  Es gibt keine Chat-Zusammenfassung. Das konservative Eingabebudget beträgt
+  300.000 UTF-8-Bytes einschließlich Reserve pro Nachricht; ältere Nachrichten
+  entfallen ausschließlich im Request. Passen Quelle und letzte Frage allein
+  nicht hinein, erscheint ein Fehler statt einer stillen Kürzung.
+- **Einstellungen → Verlauf übertragen** exportiert/importiert dasselbe JSON-Format
+  wie die Extension: Briefings, Stil-Snapshots, Transkripttext mit Zeitmarken,
+  Chats und eigene Stile. Übertrage die Datei z. B. per Quick Share oder USB und
+  importiere sie auf dem neuen Gerät. Keine Accounts, keine Server, kein Bluetooth-
+  Pairing in der Anwendung. API-Keys und Geräteeinstellungen werden nicht übertragen.
+  Der Export ist unverschlüsselt und sollte privat aufbewahrt werden.
+- Importe ergänzen die lokale Historie, führen Chats anhand stabiler IDs zusammen
+  und erzeugen bei wiederholtem Import keine Duplikate. Widersprüchliche IDs oder
+  ungültige Dateien werden als gesamte Transaktion zurückgewiesen. Grenze: 64 MiB.
+  Bereits gelöschte Daten können nur aus einem vorhandenen Export/Altgerät kommen.
+- Der ursprüngliche Share-Intent wird aus der Activity entfernt; Recents-Aufrufe
+  werden ignoriert, noch nicht verarbeitete Shares über Activity-Recreation erhalten.
+  Der Analysestart liest den aktiven Stil direkt aus Room statt aus einem eventuell
+  noch nicht geladenen Compose-State.
+
+**Nachweise:** 56 JVM-Tests, Debug-APK, kompilierte Instrumentierung, Android Lint
+und SQL-Migrationsvertrag bestanden. Die neuen Instrumentierungstests für
+Migration 3→4, Import-Roundtrip, Chat-Cascade und die Pausegrenze sind vorbereitet;
+**auf einem Android-Gerät noch nicht ausgeführt**. Keine Live-Providerkosten bei
+diesen Prüfungen. Ein datenbewahrendes Update der täglichen Release-Installation
+benötigt weiterhin den vorhandenen privaten Release-Signierschlüssel; dieser ist
+nicht Teil des Repositories oder der hier verwendeten Cloud-Umgebung.
+
+Format und verbleibende Plattformunterschiede: [Verlauf und Chat](docs/verlauf-und-chat.md).
+
 ## Verbindliche Laufzeitgrenze
 
 „Lokal“ bedeutet für LMAA:
@@ -255,7 +293,8 @@ synthetische Fixtures und einen Mock-Webserver.
 ### Nicht im ersten MVP
 
 - Eigener Backend-Dienst oder Cloud-Hosting.
-- Login, Synchronisation, Mehrgerätebetrieb und kollaborative Bibliothek.
+- Login, automatische Synchronisation und kollaborative Bibliothek. Manueller
+  Mehrgeräte-Transfer per Export/Import ist seit November 2026 enthalten.
 - Audio-Transkription für Videos ohne Captions.
 - Playlist-/Kanal-Batches, Play-Store-Veröffentlichung und Offline-KI-Inferenz.
 

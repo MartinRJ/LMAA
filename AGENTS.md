@@ -547,3 +547,22 @@ Android-Produktarchitektur.
 - Offen/Blocker:
 - Relevante Entscheidung:
 ```
+
+
+### 2026-11-08 – Gezielte Fragen, Briefing-Chat und portabler Verlauf
+
+- Scope: FOC-001, CHAT-001, MIG-001, DAT-002, INT-002, STY-003.
+- Umgesetzt: gezielte Anweisung mit atomarer Grenze vor Modellphase; getrennte
+  Hintergrundresultate; pro Briefing persistente Chats mit WorkManager und
+  unverändertem Kontext; accountloser JSON-Transfer mit Extension; Room 3→4;
+  Consume-once-Intentkorrektur und aktive Stilauswahl direkt aus Room.
+- Verifiziert: 56 JVM-Tests, Debug-Build, Instrumentierungskompilierung,
+  Android Lint, generiertes Schema 4 und tatsächliche Migrations-SQL gegen
+  dieses Schema einschließlich Bestandsdaten, Reopen und Cascade.
+- Status: Implementierung abgeschlossen; Geräteabnahme in Arbeit/blockiert,
+  weil kein Android-Gerät angeschlossen ist. Neue Tests sind nicht auf dem
+  Zieltablet ausgeführt. Release-Signierschlüssel ist hier nicht vorhanden.
+- Entscheidung: expliziter Dateitransfer statt Browser-Bluetooth; keine Keys
+  im Export und keine Änderung am automatischen Cloud-/D2D-Backup-Ausschluss.
+  Exportdatei ist bewusst im Klartext, die UI nennt das vor dem Export.
+- Keine Live-Provideraufrufe, neuen Produkt-Dependencies oder Secret-Lesezugriffe.

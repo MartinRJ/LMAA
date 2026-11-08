@@ -230,7 +230,7 @@ private fun sanitizeInline(value: String): String = CONTROL_CHARACTERS.replace(v
     .split(Regex("\\s+"))
     .filter(String::isNotEmpty)
     .joinToString(" ")
-    .take(8_000)
+    .take(16_000)
 
 private fun sanitizeInstructions(value: String): String = CONTROL_CHARACTERS.replace(value, " ")
     .replace("\r\n", "\n")
@@ -238,7 +238,7 @@ private fun sanitizeInstructions(value: String): String = CONTROL_CHARACTERS.rep
     .lines()
     .joinToString("\n", transform = String::trimEnd)
     .trim()
-    .take(8_000)
+    .take(16_000)
 
 private fun untrustedBlock(label: String, value: String): String =
     "--- BEGIN UNTRUSTED_$label ---\n$value\n--- END UNTRUSTED_$label ---"

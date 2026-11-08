@@ -64,6 +64,11 @@ internal class BriefingStyleRepository(
         return requireNotNull(dao.find(id)).toModel()
     }
 
+    suspend fun selected(): BriefingStyle {
+        ensureDefault()
+        return requireNotNull(dao.findActive()).toModel()
+    }
+
     suspend fun activeSnapshot(): BriefingStyleSnapshot =
         (dao.findActive()?.toModel() ?: ensureDefault()).snapshot()
 

@@ -24,7 +24,7 @@ internal class OpenAiResponsesClient(
     suspend fun generate(
         apiKey: String,
         instructions: String,
-        input: String,
+        input: Any,
         maxOutputTokens: Int,
     ): TextGenerationResult = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext TextGenerationResult.Failure("OPENAI_KEY_MISSING")

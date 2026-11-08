@@ -43,6 +43,7 @@ internal fun SettingsScreen(
                 .padding(horizontal = 24.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            HistoryTransferCard()
             OpenAiKeySettings(secretStoreState)
             RapidApiSettingsCard(
                 secretStoreState = secretStoreState,

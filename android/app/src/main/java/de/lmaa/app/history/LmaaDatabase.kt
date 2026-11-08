@@ -71,11 +71,12 @@ internal data class TranscriptEntity(
             onDelete = ForeignKey.RESTRICT,
         ),
     ],
-    indices = [Index("videoId"), Index("transcriptId"), Index("createdAtEpochMillis")],
+    indices = [Index("videoId"), Index("transcriptId"), Index("createdAtEpochMillis"), Index(value = ["portableId"], unique = true)],
 )
 internal data class BriefingEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val videoId: String,
+    @ColumnInfo(defaultValue = "''") val portableId: String = java.util.UUID.randomUUID().toString(),
     val transcriptId: Long,
     val styleNameSnapshot: String,
     val styleInstructionsSnapshot: String,
@@ -175,6 +176,21 @@ internal data class BriefingDeleteTarget(
 
 @Dao
 internal interface BriefingDao {
+    @Query("SELECT * FROM briefings ORDER BY createdAtEpochMillis, id")
+    suspend fun exportBriefings(): List<BriefingEntity>
+
+    @Query("SELECT * FROM briefings WHERE portableId = :id")
+    suspend fun findPortable(id: String): BriefingEntity?
+
+    @Query("SELECT * FROM videos WHERE videoId = :id")
+    suspend fun video(id: String): VideoEntity?
+
+    @Query("SELECT * FROM transcripts WHERE id = :id")
+    suspend fun transcript(id: Long): TranscriptEntity?
+
+    @Query("SELECT t.* FROM transcripts t JOIN briefings b ON b.transcriptId = t.id WHERE b.id = :id")
+    suspend fun briefingTranscript(id: Long): TranscriptEntity?
+
     @Upsert
     suspend fun upsertVideo(video: VideoEntity)
 
@@ -454,6 +470,15 @@ internal interface ProviderUsageDao {
 
 @Dao
 internal interface AnalysisJobDao {
+    @Query("UPDATE analysis_jobs SET resultConsumedAtEpochMillis = :now WHERE jobId = :id")
+    suspend fun keepInBackground(id: String, now: Long)
+
+    // Atomic boundary: once BRIEFING has been claimed, preserve the regular result.
+    @Query("""UPDATE analysis_jobs SET status = 'CANCELLED', resultConsumedAtEpochMillis = :now,
+        updatedAtEpochMillis = :now WHERE jobId = :id AND status IN ('ENQUEUED', 'RUNNING')
+        AND stage IN ('TRANSCRIPT', 'METADATA')""")
+    suspend fun pauseBeforeGeneration(id: String, now: Long): Int
+
     @Insert
     suspend fun insert(job: AnalysisJobEntity)
 
@@ -537,11 +562,13 @@ internal interface AnalysisJobDao {
         BriefingStyleEntity::class,
         AnalysisJobEntity::class,
         ProviderUsageEntity::class,
+        ChatMessageEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 internal abstract class LmaaDatabase : RoomDatabase() {
+    abstract fun chatDao(): ChatDao
     abstract fun briefingDao(): BriefingDao
     abstract fun analysisJobDao(): AnalysisJobDao
     abstract fun briefingStyleDao(): BriefingStyleDao
@@ -558,9 +585,24 @@ internal abstract class LmaaDatabase : RoomDatabase() {
                 context.applicationContext,
                 LmaaDatabase::class.java,
                 DATABASE_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 .also { instance = it }
+        }
+
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE briefings ADD COLUMN portableId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("UPDATE briefings SET portableId = lower(hex(randomblob(16)))")
+                db.execSQL("CREATE UNIQUE INDEX index_briefings_portableId ON briefings(portableId)")
+                db.execSQL("""CREATE TABLE chat_messages (
+                    id TEXT NOT NULL PRIMARY KEY, briefingId INTEGER NOT NULL,
+                    role TEXT NOT NULL, content TEXT NOT NULL, ts INTEGER NOT NULL,
+                    pending INTEGER NOT NULL, errorCode TEXT,
+                    FOREIGN KEY(briefingId) REFERENCES briefings(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                )""")
+                db.execSQL("CREATE INDEX index_chat_messages_briefingId ON chat_messages(briefingId)")
+            }
         }
 
         internal val MIGRATION_1_2 = object : Migration(1, 2) {

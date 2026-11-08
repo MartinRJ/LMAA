@@ -24,6 +24,7 @@ internal data class AnalysisJob(
     val errorCode: String?,
     val styleId: Long?,
     val style: BriefingStyleSnapshot,
+    val isBackground: Boolean = false,
 )
 
 internal class AnalysisJobRepository(
@@ -72,6 +73,11 @@ internal class AnalysisJobRepository(
     suspend fun markFailed(jobId: UUID, errorCode: String): Boolean =
         dao.markFailed(jobId.toString(), errorCode, clock()) == 1
 
+    suspend fun keepInBackground(jobId: UUID) = dao.keepInBackground(jobId.toString(), clock())
+
+    suspend fun pauseBeforeGeneration(jobId: UUID): Boolean =
+        dao.pauseBeforeGeneration(jobId.toString(), clock()) == 1
+
     suspend fun cancel(jobId: UUID): Boolean =
         dao.cancel(jobId.toString(), clock()) == 1
 
@@ -87,6 +93,7 @@ internal class AnalysisJobRepository(
         briefingId = briefingId,
         errorCode = errorCode,
         styleId = styleId,
+        isBackground = resultConsumedAtEpochMillis != null,
         style = BriefingStyleSnapshot(
             name = styleNameSnapshot.ifBlank { DEFAULT_BRIEFING_STYLE.name },
             instructions = styleInstructionsSnapshot.ifBlank {

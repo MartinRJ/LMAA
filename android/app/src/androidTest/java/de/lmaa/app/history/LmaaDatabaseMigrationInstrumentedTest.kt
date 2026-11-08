@@ -49,7 +49,7 @@ class LmaaDatabaseMigrationInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, LmaaDatabase::class.java, databaseName)
-            .addMigrations(LmaaDatabase.MIGRATION_1_2, LmaaDatabase.MIGRATION_2_3)
+            .addMigrations(LmaaDatabase.MIGRATION_1_2, LmaaDatabase.MIGRATION_2_3, LmaaDatabase.MIGRATION_3_4)
             .build()
         try {
             val database = migrated.openHelper.writableDatabase
@@ -79,12 +79,52 @@ class LmaaDatabaseMigrationInstrumentedTest {
         }
     }
 
-    private fun createVersion1Database(): SupportSQLiteOpenHelper {
+    @Test
+    fun migration3To4_preservesBriefingsAndAssignsStablePortableIds() {
+        createVersion1Database(3).use { helper ->
+            val db = helper.writableDatabase
+            db.execSQL("""INSERT INTO videos VALUES ('abcdefghijk',
+                'https://www.youtube.com/watch?v=abcdefghijk', 'Bestand', NULL, 'Kanal',
+                NULL, NULL, NULL, '', 1)""")
+            db.execSQL("""INSERT INTO transcripts VALUES (1, 'abcdefghijk', 'primary', 'de', 0, '[]', 'Original', 1)""")
+            db.execSQL("""INSERT INTO briefings (id, videoId, transcriptId, styleNameSnapshot,
+                styleInstructionsSnapshot, styleOutputLanguageSnapshot, modelSnapshot, markdown,
+                mapChunkCount, status, errorCode, createdAtEpochMillis)
+                VALUES (1, 'abcdefghijk', 1, 'Eigener Stil', 'Ein Satz', 'Deutsch',
+                'gpt-5.6-sol', 'Unverändert', 1, 'COMPLETED', NULL, 1)""")
+        }
+        var portableId = ""
+        repeat(2) {
+            Room.databaseBuilder(context, LmaaDatabase::class.java, databaseName)
+                .addMigrations(LmaaDatabase.MIGRATION_3_4).build().use { migrated ->
+                    val db = migrated.openHelper.writableDatabase
+                    db.query("SELECT portableId, markdown, styleInstructionsSnapshot FROM briefings").use { cursor ->
+                        cursor.moveToFirst()
+                        if (portableId.isEmpty()) portableId = cursor.getString(0)
+                        assertEquals(32, portableId.length)
+                        assertEquals(portableId, cursor.getString(0))
+                        assertEquals("Unverändert", cursor.getString(1))
+                        assertEquals("Ein Satz", cursor.getString(2))
+                    }
+                    db.query("SELECT COUNT(*) FROM chat_messages").use { cursor ->
+                        cursor.moveToFirst(); assertEquals(0, cursor.getInt(0))
+                    }
+                }
+        }
+    }
+
+    private fun createVersion1Database(version: Int = 1): SupportSQLiteOpenHelper {
         val configuration = SupportSQLiteOpenHelper.Configuration.builder(context)
             .name(databaseName)
             .callback(
-                object : SupportSQLiteOpenHelper.Callback(1) {
-                    override fun onCreate(db: SupportSQLiteDatabase) = createVersion1Schema(db)
+                object : SupportSQLiteOpenHelper.Callback(version) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        createVersion1Schema(db)
+                        if (version == 3) {
+                            LmaaDatabase.MIGRATION_1_2.migrate(db)
+                            LmaaDatabase.MIGRATION_2_3.migrate(db)
+                        }
+                    }
 
                     override fun onUpgrade(
                         db: SupportSQLiteDatabase,
